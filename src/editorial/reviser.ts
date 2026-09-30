@@ -303,7 +303,7 @@ export function parseRevisionProposal(
     frontmatter.source_draft ??
     "draft.md";
 
-  const proposedArticle = extractSection(markdown, "Proposed article");
+  const proposedArticle = extractTrailingSection(markdown, "Proposed article");
   if (!proposedArticle.trim()) {
     throw new Error("Revision proposal has no Proposed article section.");
   }
@@ -340,19 +340,13 @@ function parseFrontmatter(lines: string[]): Record<string, string> {
   return result;
 }
 
-function extractSection(markdown: string, heading: string): string {
+function extractTrailingSection(markdown: string, heading: string): string {
   const lines = markdown.split(/\r?\n/);
   const marker = `## ${heading}`;
   const start = lines.findIndex((line) => line.trim() === marker);
   if (start < 0) return "";
 
-  const result: string[] = [];
-  for (let index = start + 1; index < lines.length; index += 1) {
-    const line = lines[index] ?? "";
-    if (/^##\s+/.test(line)) break;
-    result.push(line);
-  }
-  return result.join("\n").trim();
+  return lines.slice(start + 1).join("\n").trim();
 }
 
 function titleCase(value: string): string {
