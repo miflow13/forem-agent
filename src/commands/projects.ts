@@ -59,7 +59,7 @@ function summarizeProject(project: StoredEditorialProject): ProjectSummary {
   } else if (stage === "approved") {
     nextAction = `forem-agent draft ${project.slug}`;
   } else if (stage === "draft") {
-    nextAction = `Edit ${draftPath}; revision passes are the next workflow step.`;
+    nextAction = `forem-agent revise ${project.slug} --pass structure`;
   } else {
     nextAction = "Inspect the project workspace before continuing.";
   }
