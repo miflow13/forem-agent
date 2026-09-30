@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { basename, resolve } from "node:path";
 import type { AppConfig } from "../config.js";
@@ -51,6 +52,7 @@ type ProjectAction =
   | "claim-check"
   | "accept-latest"
   | "preview"
+  | "edit"
   | "notes"
   | "details"
   | "back";
@@ -246,6 +248,12 @@ async function projectScreen(
       continue;
     }
 
+    if (action === "edit") {
+      openCurrentFile(project);
+      await pause();
+      continue;
+    }
+
     if (action === "notes") {
       showNotesPreview(project);
       await pause();
@@ -319,6 +327,12 @@ function projectActions(
       description: "Promote the newest still-valid structure/voice proposal.",
     });
   }
+
+  actions.push({
+    label: project.hasDraft ? "Open current article in editor" : "Open brief in editor",
+    value: "edit",
+    description: "Uses $VISUAL, $EDITOR, or VS Code when available.",
+  });
 
   if (project.hasDraft) {
     actions.push({
@@ -529,6 +543,10 @@ async function startArticleFlow(config: AppConfig): Promise<void> {
         "Review/edit brief.md before approving it. Meldr will not draft until you approve.",
       ),
     );
+
+    if (await confirm("Open the brief in your editor now?")) {
+      openPathInEditor(result.workspace.briefPath);
+    }
   } catch (error) {
     warn(errorMessage(error));
     console.log("");
@@ -662,6 +680,45 @@ async function analyzeFlow(config: AppConfig): Promise<void> {
   }
 
   await pause();
+}
+
+function openCurrentFile(project: ProjectSummary): void {
+  clearScreen();
+  const path = project.hasWorking
+    ? project.workingPath
+    : project.hasDraft
+      ? project.draftPath
+      : project.briefPath;
+
+  section("Open in editor");
+  openPathInEditor(path);
+}
+
+function openPathInEditor(path: string): void {
+  const editor =
+    process.env.VISUAL ??
+    process.env.EDITOR ??
+    "code";
+
+  const result = spawnSync(editor, [path], {
+    stdio: "inherit",
+  });
+
+  if (result.error) {
+    warn(`Could not launch ${editor}.`);
+    console.log("");
+    console.log("Open this file manually:");
+    console.log(path);
+    return;
+  }
+
+  if (result.status && result.status !== 0) {
+    warn(`${editor} exited with status ${result.status}.`);
+    console.log(path);
+    return;
+  }
+
+  success(`Opened ${path}`);
 }
 
 function showArticlePreview(project: ProjectSummary): void {
