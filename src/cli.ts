@@ -532,7 +532,7 @@ program
     keyValue("Updated", item.project.updatedAt);
 
     section("Next");
-    if (item.nextAction.startsWith("forem-agent ")) {
+    if (item.nextAction.startsWith("meldr ")) {
       info(command(item.nextAction));
     } else {
       info(item.nextAction);
