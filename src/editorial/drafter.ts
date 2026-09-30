@@ -137,8 +137,6 @@ export function renderDraftMarkdown(input: {
   title: string;
   model: string;
   sections: Array<{ heading: string; markdown: string }>;
-  personalExperiencePlaceholders: string[];
-  technicalClaimsToVerify: string[];
 }): string {
   const lines = [
     "---",
@@ -155,26 +153,6 @@ export function renderDraftMarkdown(input: {
 
   for (const section of input.sections) {
     lines.push(`## ${section.heading}`, "", section.markdown, "");
-  }
-
-  if (input.personalExperiencePlaceholders.length > 0) {
-    lines.push(
-      "## Author notes to complete",
-      "",
-      "> These placeholders come directly from the approved brief. Replace them with your own first-hand material before publishing.",
-      "",
-      ...input.personalExperiencePlaceholders.map((item) => `- ${item}`),
-      "",
-    );
-  }
-
-  if (input.technicalClaimsToVerify.length > 0) {
-    lines.push(
-      "## Claims to verify before publishing",
-      "",
-      ...input.technicalClaimsToVerify.map((item) => `- ${item}`),
-      "",
-    );
   }
 
   return lines.join("\n");
