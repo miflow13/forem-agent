@@ -7,7 +7,7 @@ import type { AppConfig } from "../src/config.js";
 import { getProjectStatus, listProjects } from "../src/commands/projects.js";
 import { AgentDatabase } from "../src/storage/database.js";
 
-test("projects navigation reflects workspace files and next actions", () => {
+test("projects navigation reflects draft and accepted working states", () => {
   const root = mkdtempSync(join(tmpdir(), "forem-agent-projects-"));
   const config: AppConfig = {
     foremBaseUrl: "https://dev.to/api",
@@ -50,10 +50,40 @@ test("projects navigation reflects workspace files and next actions", () => {
       workspacePath: draftedPath,
     });
 
+    const workingPath = join(config.workspaceDir, "working-project");
+    mkdirSync(workingPath, { recursive: true });
+    writeFileSync(join(workingPath, "brief.md"), "status: approved\n");
+    writeFileSync(join(workingPath, "draft.md"), "# Original\n");
+    writeFileSync(
+      join(workingPath, "working.md"),
+      [
+        "---",
+        "status: working",
+        'accepted_revision: "revisions/2026-09-30-structure.md"',
+        "---",
+        "",
+        "# Working",
+      ].join("\n"),
+    );
+    writeFileSync(
+      join(workingPath, "editorial-notes.md"),
+      "# Editorial Notes\n",
+    );
+
+    database.createEditorialProject({
+      id: "working-id",
+      slug: "working-project",
+      title: "Working Project",
+      thesis: "Thesis",
+      audience: "Readers",
+      status: "approved",
+      workspacePath: workingPath,
+    });
+
     database.close();
 
     const projects = listProjects(config);
-    assert.equal(projects.length, 2);
+    assert.equal(projects.length, 3);
 
     const proposed = getProjectStatus(config, "proposed-project");
     assert.equal(proposed.stage, "proposed");
@@ -62,7 +92,14 @@ test("projects navigation reflects workspace files and next actions", () => {
     const drafted = getProjectStatus(config, "drafted-project");
     assert.equal(drafted.stage, "draft");
     assert.equal(drafted.hasDraft, true);
+    assert.equal(drafted.hasWorking, false);
     assert.match(drafted.nextAction, /revise drafted-project --pass structure/);
+
+    const working = getProjectStatus(config, "working-project");
+    assert.equal(working.stage, "working");
+    assert.equal(working.hasWorking, true);
+    assert.equal(working.hasEditorialNotes, true);
+    assert.match(working.nextAction, /revise working-project --pass voice/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
