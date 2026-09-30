@@ -5,6 +5,7 @@
   "description": "Local-first editorial intelligence CLI for Forem/DEV.",
   "type": "module",
   "bin": {
+    "meldr": "./dist/cli.js",
     "forem-agent": "./dist/cli.js"
   },
   "scripts": {
