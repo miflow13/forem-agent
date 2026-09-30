@@ -104,7 +104,10 @@ test("projects navigation reflects draft and accepted working states", () => {
     const humanPath = join(config.workspaceDir, "human-project");
     mkdirSync(humanPath, { recursive: true });
     writeFileSync(join(humanPath, "brief.md"), "status: approved\n");
-    writeFileSync(join(humanPath, "working.md"), "# Human draft\n");
+    writeFileSync(
+      join(humanPath, "working.md"),
+      "# Human draft\n\nA human-authored paragraph.\n",
+    );
 
     database.createEditorialProject({
       id: "human-id",
@@ -118,7 +121,24 @@ test("projects navigation reflects draft and accepted working states", () => {
 
     const sectionPath = join(config.workspaceDir, "section-project");
     mkdirSync(sectionPath, { recursive: true });
-    writeFileSync(join(sectionPath, "brief.md"), "status: approved\n");
+    writeFileSync(
+      join(sectionPath, "brief.md"),
+      [
+        "---",
+        "status: approved",
+        "---",
+        "",
+        "## Outline",
+        "",
+        "### 1. Opening",
+        "",
+        "Open the article.",
+        "",
+        "### 2. Boundary",
+        "",
+        "Explain the boundary.",
+      ].join("\n"),
+    );
     writeFileSync(join(sectionPath, "working.md"), "# Section draft\n");
 
     database.createEditorialProject({
@@ -184,6 +204,24 @@ test("projects navigation reflects draft and accepted working states", () => {
     assert.equal(
       projectActions(sectionProject, false, false)[0]?.value,
       "section-assist",
+    );
+
+    writeFileSync(
+      join(sectionPath, "working.md"),
+      "# Section draft\n\n## Opening\n\nOpening body.\n",
+    );
+    const secondSection = getProjectStatus(config, "section-project");
+    assert.match(secondSection.nextAction, /section section-project 2/);
+
+    writeFileSync(
+      join(sectionPath, "working.md"),
+      "# Section draft\n\n## Opening\n\nOpening body.\n\n## Boundary\n\nBoundary body.\n",
+    );
+    const readyToReview = getProjectStatus(config, "section-project");
+    assert.match(readyToReview.nextAction, /revise section-project --pass structure/);
+    assert.equal(
+      projectActions(readyToReview, false, false)[0]?.value,
+      "structure",
     );
 
     const modeOptions = writingModeMenuOptions();

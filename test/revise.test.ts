@@ -175,6 +175,35 @@ test("revision reviews a human-owned working article without draft.md", async ()
   }
 });
 
+test("revision refuses to turn an empty human workspace into generated prose", async () => {
+  const fixture = createFixture();
+
+  try {
+    rmSync(fixture.draftPath);
+    writeFileSync(
+      join(fixture.workspacePath, "working.md"),
+      "---\nstatus: working\n---\n\n# Human article\n",
+      "utf8",
+    );
+    const database = new AgentDatabase(fixture.config.databasePath);
+    database.setEditorialProjectWritingMode(fixture.slug, "human");
+    database.close();
+    const model = new FakeStructuredTextModel({
+      summary: "Unused",
+      changes: [],
+      revised_markdown: "Model-written article",
+    });
+
+    await assert.rejects(
+      () => runRevision(fixture.config, fixture.slug, "structure", model),
+      /working\.md has no article body/i,
+    );
+    assert.equal(model.requests.length, 0);
+  } finally {
+    fixture.cleanup();
+  }
+});
+
 function createFixture() {
   const root = mkdtempSync(join(tmpdir(), "forem-agent-revise-"));
   const workspaceRoot = join(root, "articles");

@@ -351,6 +351,8 @@ export function projectActions(
     description?: string;
   }> = [];
   const hasArticle = project.hasDraft || project.hasWorking;
+  const hasReviewableArticle =
+    project.hasDraft || (project.hasWorking && project.hasArticleContent);
 
   if (project.stage === "proposed") {
     actions.push({
@@ -381,12 +383,22 @@ export function projectActions(
   } else if (project.stage === "working") {
     if (
       project.writingMode === "section_assisted" &&
-      project.acceptedPass === null
+      project.acceptedPass === null &&
+      project.nextSectionNumber !== null
     ) {
       actions.push({
         label: "Next · Write section by section",
         value: "section-assist",
         description: "Choose what help, if any, you want for one section.",
+      });
+    } else if (
+      project.writingMode === "human" &&
+      !project.hasArticleContent
+    ) {
+      actions.push({
+        label: "Next · Write in working.md",
+        value: "edit",
+        description: "Meldr will wait for your prose before offering article review.",
       });
     } else if (project.acceptedPass === "structure") {
       actions.push({
@@ -430,7 +442,7 @@ export function projectActions(
     description: "Uses $VISUAL, $EDITOR, or VS Code when available.",
   });
 
-  if (hasArticle) {
+  if (hasReviewableArticle) {
     actions.push({
       label: "Preview current article",
       value: "preview",
@@ -448,7 +460,7 @@ export function projectActions(
     });
   }
 
-  if (hasArticle) {
+  if (hasReviewableArticle) {
     actions.push(
       {
         label: "Run structure review again",
@@ -1188,9 +1200,17 @@ export function friendlyStage(project: ProjectSummary): string {
   if (
     project.stage === "working" &&
     project.writingMode === "section_assisted" &&
-    project.acceptedPass === null
+    project.acceptedPass === null &&
+    project.nextSectionNumber !== null
   ) {
     return "Writing section by section";
+  }
+  if (
+    project.stage === "working" &&
+    project.writingMode === "human" &&
+    !project.hasArticleContent
+  ) {
+    return "Waiting for your draft";
   }
   if (
     project.stage === "working" &&
@@ -1222,9 +1242,17 @@ export function friendlyNextStep(
   if (
     project.stage === "working" &&
     project.writingMode === "section_assisted" &&
-    project.acceptedPass === null
+    project.acceptedPass === null &&
+    project.nextSectionNumber !== null
   ) {
-    return "Write the next section";
+    return `Write section ${project.nextSectionNumber}`;
+  }
+  if (
+    project.stage === "working" &&
+    project.writingMode === "human" &&
+    !project.hasArticleContent
+  ) {
+    return "Write your draft in working.md";
   }
   if (
     project.stage === "working" &&

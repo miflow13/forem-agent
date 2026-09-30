@@ -23,6 +23,12 @@ export function stripFrontmatter(markdown: string): string {
   return lines.slice(closing + 1).join("\n").trimStart();
 }
 
+export function hasArticleBody(markdown: string): boolean {
+  return stripFrontmatter(markdown)
+    .replace(/^#{1,6}\s+.*$/gm, "")
+    .trim().length > 0;
+}
+
 export function extractEditorialNotes(
   markdown: string,
 ): ExtractedEditorialNotes {

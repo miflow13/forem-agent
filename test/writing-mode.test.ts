@@ -4,6 +4,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  appendFileSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -12,6 +13,7 @@ import { join } from "node:path";
 import test from "node:test";
 import type { AppConfig } from "../src/config.js";
 import { selectWritingMode } from "../src/commands/writing-mode.js";
+import { getProjectStatus } from "../src/commands/projects.js";
 import { AgentDatabase } from "../src/storage/database.js";
 
 test("human writing mode creates an author-owned working file without a draft", () => {
@@ -33,6 +35,20 @@ test("human writing mode creates an author-owned working file without a draft", 
     assert.match(working, /writing_mode: human/);
     assert.match(working, /# Author-Owned Title/);
     assert.doesNotMatch(working, /generated/i);
+
+    const waiting = getProjectStatus(fixture.config, fixture.slug);
+    assert.match(waiting.nextAction, /write in working\.md/i);
+    assert.doesNotMatch(waiting.nextAction, /revise/);
+
+    appendFileSync(
+      result.workingPath!,
+      "The author's first paragraph.\n",
+      "utf8",
+    );
+    assert.match(
+      getProjectStatus(fixture.config, fixture.slug).nextAction,
+      /revise .* --pass structure/,
+    );
 
     const database = new AgentDatabase(fixture.config.databasePath);
     assert.equal(
