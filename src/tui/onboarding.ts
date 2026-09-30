@@ -99,9 +99,12 @@ export async function ensureFirstRunOnboarding(
   }
 
   const configuredResult = await configureModelInteractive(initialConfig);
-  if (isModelConfigured(configuredResult)) {
-    writeOnboardingMarker(configuredResult);
+  if (!isModelConfigured(configuredResult)) {
+    clearScreen();
+    return null;
   }
+
+  writeOnboardingMarker(configuredResult);
   return configuredResult;
 }
 
