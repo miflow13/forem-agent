@@ -62,7 +62,7 @@ test("projects navigation reflects workspace files and next actions", () => {
     const drafted = getProjectStatus(config, "drafted-project");
     assert.equal(drafted.stage, "draft");
     assert.equal(drafted.hasDraft, true);
-    assert.match(drafted.nextAction, /revision passes are the next workflow step/);
+    assert.match(drafted.nextAction, /revise drafted-project --pass structure/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
