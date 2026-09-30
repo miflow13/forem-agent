@@ -29,10 +29,8 @@ export async function selectMenu<T>(inputOptions: {
     const key = await readKey();
 
     if (key.ctrl && key.name === "c") return null;
-    if (
-      inputOptions.canGoBack &&
-      (key.name === "escape" || key.name === "q")
-    ) {
+    if (key.name === "q") return null;
+    if (inputOptions.canGoBack && key.name === "escape") {
       return null;
     }
 
