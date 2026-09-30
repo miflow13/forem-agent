@@ -13,6 +13,8 @@ export type MenuOption<T> = {
 export async function selectMenu<T>(inputOptions: {
   title: string;
   subtitle?: string;
+  status?: string;
+  body?: string[];
   options: Array<MenuOption<T>>;
   canGoBack?: boolean;
   hint?: string;
@@ -73,6 +75,65 @@ export async function promptText(
   }
 }
 
+export async function promptSecret(
+  question: string,
+): Promise<string | null> {
+  ensureInteractiveTerminal();
+  output.write(`${question} `);
+
+  return new Promise((resolve) => {
+    readline.emitKeypressEvents(input);
+    input.setRawMode?.(true);
+    input.resume();
+
+    let value = "";
+
+    const cleanup = () => {
+      input.off("keypress", handler);
+      input.setRawMode?.(false);
+      input.pause();
+    };
+
+    const handler = (sequence: string, key: readline.Key) => {
+      if (key.ctrl && key.name === "c") {
+        cleanup();
+        output.write("\n");
+        resolve(null);
+        return;
+      }
+
+      if (key.name === "return" || key.name === "enter") {
+        cleanup();
+        output.write("\n");
+        resolve(value.trim() || null);
+        return;
+      }
+
+      if (key.name === "backspace") {
+        if (value.length > 0) {
+          value = value.slice(0, -1);
+          output.write("\b \b");
+        }
+        return;
+      }
+
+      if (
+        key.name === "escape" ||
+        key.ctrl ||
+        key.meta ||
+        !sequence
+      ) {
+        return;
+      }
+
+      value += sequence;
+      output.write("•".repeat([...sequence].length));
+    };
+
+    input.on("keypress", handler);
+  });
+}
+
 export async function confirm(
   question: string,
   defaultYes = false,
@@ -100,6 +161,8 @@ function renderMenu<T>(
   inputOptions: {
     title: string;
     subtitle?: string;
+    status?: string;
+    body?: string[];
     options: Array<MenuOption<T>>;
     canGoBack?: boolean;
     hint?: string;
@@ -114,12 +177,22 @@ function renderMenu<T>(
   );
 
   renderBrand(width);
+  if (inputOptions.status) {
+    console.log(style.dim(`AI  ${truncate(inputOptions.status, Math.max(18, width - 4))}`));
+  }
   console.log(style.dim("─".repeat(Math.min(width, 72))));
   console.log("");
   console.log(style.bold(inputOptions.title));
 
   if (inputOptions.subtitle) {
-    console.log(style.dim(inputOptions.subtitle));
+    console.log(style.dim(truncate(inputOptions.subtitle, Math.max(24, width - 2))));
+  }
+
+  if (inputOptions.body?.length) {
+    console.log("");
+    for (const line of inputOptions.body) {
+      console.log(truncate(line, Math.max(24, width - 2)));
+    }
   }
 
   console.log("");
@@ -132,13 +205,15 @@ function renderMenu<T>(
     const renderedLabel = option.disabled
       ? style.dim(label)
       : index === selected
-        ? style.bold(label)
+        ? style.bold(style.cyan(label))
         : label;
 
     console.log(`${marker} ${renderedLabel}`);
 
     if (option.description && index === selected) {
-      console.log(`  ${style.dim(truncate(option.description, labelWidth))}`);
+      console.log(
+        `  ${style.dim("└─")} ${style.dim(truncate(option.description, Math.max(16, labelWidth - 3)))}`,
+      );
     }
   });
 
@@ -146,7 +221,7 @@ function renderMenu<T>(
   console.log(
     style.dim(
       inputOptions.hint ??
-        `↑/↓ navigate  Enter select${inputOptions.canGoBack ? "  q back" : "  q exit"}`,
+        `↑↓ move   Enter choose${inputOptions.canGoBack ? "   q back" : "   q exit"}`,
     ),
   );
 }
