@@ -88,37 +88,37 @@ export async function runInteractive(initialConfig: AppConfig): Promise<void> {
               {
                 label: `Continue “${recent.project.title}”`,
                 value: "continue" as const,
-                description: friendlyNextStep(
+                description: `Next · ${friendlyNextStep(
                   recent,
                   recentClaimReport !== null,
-                ),
+                )}`,
               },
             ]
           : []),
+        {
+          label: "Start a new article",
+          value: "new",
+          description: "Turn a plain-English idea into an editable brief.",
+        },
         {
           label: "Projects",
           value: "projects",
           description: "Browse articles by title and workflow stage.",
         },
         {
-          label: "Start a new article",
-          value: "new",
-          description: "Describe the article idea in plain English.",
+          label: "Explore writing opportunities",
+          value: "opportunities",
+          description: "Browse deterministic signals from your latest DEV sample.",
+        },
+        {
+          label: "Analyze a DEV article",
+          value: "analyze",
+          description: "Compare a public article against your local sample.",
         },
         {
           label: "Refresh DEV research",
           value: "research",
           description: "Collect a fresh public Forem/DEV sample.",
-        },
-        {
-          label: "Explore writing opportunities",
-          value: "opportunities",
-          description: "Browse deterministic tag signals from your latest sample.",
-        },
-        {
-          label: "Analyze a DEV article",
-          value: "analyze",
-          description: "Compare an article against your local research sample.",
         },
         {
           label: "AI settings",
@@ -132,7 +132,7 @@ export async function runInteractive(initialConfig: AppConfig): Promise<void> {
         },
         { label: "Exit", value: "exit" },
       ],
-      hint: "↑/↓ navigate  Enter select  q exit",
+      hint: "↑↓ move   Enter choose   q exit",
     });
 
     if (!action || action === "exit") {
@@ -238,7 +238,7 @@ async function projectScreen(
       status: modelStatusLabel(config),
       options,
       canGoBack: true,
-      hint: "↑/↓ navigate  Enter select  q back",
+      hint: "↑↓ move   Enter choose   q back",
     });
 
     if (!action || action === "back") return;
@@ -333,46 +333,46 @@ function projectActions(
 
   if (project.stage === "proposed") {
     actions.push({
-      label: "Approve brief",
+      label: "Next · Approve brief",
       value: "approve",
       description: "Mark the edited brief ready for drafting.",
     });
   } else if (project.stage === "approved") {
     actions.push({
-      label: "Generate draft",
+      label: "Next · Generate draft",
       value: "draft",
       description: "Draft section-by-section from the approved brief.",
     });
   } else if (project.stage === "draft") {
     actions.push({
-      label: "Review article structure",
+      label: "Next · Review article structure",
       value: "structure",
       description: "Find repetition, pacing, and organization problems.",
     });
   } else if (project.stage === "working") {
     if (project.acceptedPass === "structure") {
       actions.push({
-        label: "Review writing voice",
+        label: "Next · Review writing voice",
         value: "voice",
         description: "Tighten rhythm, clarity, and generic AI phrasing.",
       });
     } else if (project.acceptedPass === "voice") {
       if (hasCurrentClaimReport) {
         actions.push({
-          label: "Review claim report",
+          label: "Next · Review claim report",
           value: "claim-report",
           description: "Review the verification targets for the current article.",
         });
       } else {
         actions.push({
-          label: "Check claims to verify",
+          label: "Next · Check claims to verify",
           value: "claim-check",
           description: "Identify factual claims that need source verification.",
         });
       }
     } else {
       actions.push({
-        label: "Review article structure",
+        label: "Next · Review article structure",
         value: "structure",
       });
     }
@@ -1041,7 +1041,8 @@ function showHelp(): void {
       "Meldr keeps the original draft, accepted working article,",
       "editorial notes, and revision history as separate files.",
       "",
-      "Arrow keys move. Enter selects. q goes back.",
+      "Arrow keys move. Enter chooses. q goes back.",
+      "AI settings can switch between OpenAI, Claude, and compatible custom providers.",
       "The regular command-line interface still works for automation.",
     ].join("\n"),
   );
