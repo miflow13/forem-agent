@@ -1,12 +1,14 @@
 #!/usr/bin/env node
 import { Command, Option } from "commander";
-import { ensureHome, loadConfig } from "./config.js";
+import { ensureHome, loadConfig, loadProjectEnv } from "./config.js";
 import { runAnalyze } from "./commands/analyze.js";
 import { runOpportunities } from "./commands/opportunities.js";
 import { approvePlan, runPlan } from "./commands/plan.js";
 import { runResearch } from "./commands/research.js";
 import { interpretArticleAnalysis } from "./editorial/interpreter.js";
 import { createConfiguredModel } from "./providers/configured-model.js";
+
+loadProjectEnv();
 
 const program = new Command();
 
