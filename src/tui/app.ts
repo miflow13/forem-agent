@@ -50,6 +50,7 @@ type ProjectAction =
   | "structure"
   | "voice"
   | "claim-check"
+  | "claim-report"
   | "accept-latest"
   | "preview"
   | "edit"
@@ -61,6 +62,9 @@ export async function runInteractive(config: AppConfig): Promise<void> {
   while (true) {
     const projects = listProjects(config);
     const recent = projects[0] ?? null;
+    const recentClaimReport = recent
+      ? latestCurrentClaimReport(recent)
+      : null;
 
     const action = await selectMenu<MainAction>({
       title: "What would you like to do?",
@@ -73,7 +77,10 @@ export async function runInteractive(config: AppConfig): Promise<void> {
               {
                 label: `Continue “${recent.project.title}”`,
                 value: "continue" as const,
-                description: friendlyNextStep(recent),
+                description: friendlyNextStep(
+                  recent,
+                  recentClaimReport !== null,
+                ),
               },
             ]
           : []),
@@ -173,7 +180,10 @@ async function projectsScreen(config: AppConfig): Promise<void> {
       options: projects.map((item) => ({
         label: item.project.title,
         value: item.project.slug,
-        description: `${friendlyStage(item)} · ${friendlyNextStep(item)}`,
+        description: `${friendlyStage(item)} · ${friendlyNextStep(
+          item,
+          latestCurrentClaimReport(item) !== null,
+        )}`,
       })),
       canGoBack: true,
     });
@@ -190,11 +200,19 @@ async function projectScreen(
   while (true) {
     const project = getProjectStatus(config, projectReference);
     const latest = latestAcceptableRevision(project);
+    const claimReport = latestCurrentClaimReport(project);
 
-    const options = projectActions(project, latest !== null);
+    const options = projectActions(
+      project,
+      latest !== null,
+      claimReport !== null,
+    );
     const action = await selectMenu<ProjectAction>({
       title: project.project.title,
-      subtitle: `${friendlyStage(project)} · Next: ${friendlyNextStep(project)}`,
+      subtitle: `${friendlyStage(project)} · Next: ${friendlyNextStep(
+        project,
+        claimReport !== null,
+      )}`,
       options,
       canGoBack: true,
       hint: "↑/↓ navigate  Enter select  q back",
@@ -242,6 +260,14 @@ async function projectScreen(
       continue;
     }
 
+    if (action === "claim-report" && claimReport) {
+      clearScreen();
+      section("Latest claim report");
+      showClaimReportCompact(claimReport);
+      await pause();
+      continue;
+    }
+
     if (action === "preview") {
       showArticlePreview(project);
       await pause();
@@ -270,6 +296,7 @@ async function projectScreen(
 function projectActions(
   project: ProjectSummary,
   hasPendingRevision: boolean,
+  hasCurrentClaimReport: boolean,
 ): Array<{
   label: string;
   value: ProjectAction;
@@ -307,11 +334,19 @@ function projectActions(
         description: "Tighten rhythm, clarity, and generic AI phrasing.",
       });
     } else if (project.acceptedPass === "voice") {
-      actions.push({
-        label: "Check claims to verify",
-        value: "claim-check",
-        description: "Identify factual claims that need source verification.",
-      });
+      if (hasCurrentClaimReport) {
+        actions.push({
+          label: "Review claim report",
+          value: "claim-report",
+          description: "Review the verification targets for the current article.",
+        });
+      } else {
+        actions.push({
+          label: "Check claims to verify",
+          value: "claim-check",
+          description: "Identify factual claims that need source verification.",
+        });
+      }
     } else {
       actions.push({
         label: "Review article structure",
@@ -823,6 +858,48 @@ function showClaimReportCompact(path: string): void {
   console.log(style.dim(`Full report: ${path}`));
 }
 
+function latestCurrentClaimReport(
+  project: ProjectSummary,
+): string | null {
+  if (!project.hasDraft) return null;
+
+  const revisionsDir = resolve(
+    project.project.workspacePath,
+    "revisions",
+  );
+  if (!existsSync(revisionsDir)) return null;
+
+  const currentSource = project.hasWorking
+    ? project.workingPath
+    : project.draftPath;
+  if (!existsSync(currentSource)) return null;
+
+  const sourceName = project.hasWorking ? "working.md" : "draft.md";
+  const sourceHash = sha256(readFileSync(currentSource, "utf8"));
+
+  const candidates = readdirSync(revisionsDir)
+    .filter((name) => name.endsWith("-claim-check.md"))
+    .sort()
+    .reverse();
+
+  for (const name of candidates) {
+    const path = resolve(revisionsDir, name);
+    const markdown = readFileSync(path, "utf8");
+    const reportSource = markdown.match(
+      /^source_article:\s*["']?([^"'\r\n]+)["']?$/m,
+    )?.[1];
+    const reportHash = markdown.match(
+      /^source_sha256:\s*([a-f0-9]{64})$/m,
+    )?.[1];
+
+    if (reportSource === sourceName && reportHash === sourceHash) {
+      return path;
+    }
+  }
+
+  return null;
+}
+
 function latestAcceptableRevision(
   project: ProjectSummary,
 ): string | null {
@@ -891,7 +968,10 @@ function friendlyStage(project: ProjectSummary): string {
   return project.stage;
 }
 
-function friendlyNextStep(project: ProjectSummary): string {
+function friendlyNextStep(
+  project: ProjectSummary,
+  hasCurrentClaimReport = false,
+): string {
   if (project.stage === "proposed") return "Review and approve the brief";
   if (project.stage === "approved") return "Generate the first draft";
   if (project.stage === "draft") return "Review article structure";
@@ -905,7 +985,9 @@ function friendlyNextStep(project: ProjectSummary): string {
     project.stage === "working" &&
     project.acceptedPass === "voice"
   ) {
-    return "Check claims that need verification";
+    return hasCurrentClaimReport
+      ? "Review the current claim report"
+      : "Check claims that need verification";
   }
   return "Review the current article";
 }
