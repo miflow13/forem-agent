@@ -87,3 +87,34 @@ test("authenticated author requests fail before network access without an API ke
   await assert.rejects(() => client.getMe(), /requires FOREM_API_KEY/);
   assert.equal(called, false);
 });
+
+
+test("single-article responses normalize Forem's inverted tag fields", async () => {
+  const fakeFetch: typeof fetch = async () =>
+    new Response(
+      JSON.stringify({
+        id: 99,
+        title: "Prompt Injection Is the New SQL Injection",
+        slug: "prompt-injection-is-the-new-sql-injection-and-were-not-ready-4ea4",
+        url: "https://dev.to/james_anderson_h/prompt-injection-is-the-new-sql-injection-and-were-not-ready-4ea4",
+        comments_count: 4,
+        public_reactions_count: 12,
+        positive_reactions_count: 12,
+        published_timestamp: "2026-09-30T10:00:00Z",
+        reading_time_minutes: 6,
+        tag_list: "security",
+        tags: ["security", "ai", "webdev"],
+        user: { username: "james_anderson_h" },
+      }),
+      { status: 200 },
+    );
+
+  const client = new ForemClient("https://dev.to/api", undefined, fakeFetch);
+  const article = await client.getArticleByPath(
+    "james_anderson_h",
+    "prompt-injection-is-the-new-sql-injection-and-were-not-ready-4ea4",
+  );
+
+  assert.deepEqual(article.tag_list, ["security", "ai", "webdev"]);
+  assert.equal(article.tags, "security, ai, webdev");
+});

@@ -275,6 +275,27 @@ export class AgentDatabase {
     return row ? mapEditorialProject(row) : null;
   }
 
+  listEditorialProjects(): StoredEditorialProject[] {
+    const rows = this.db.prepare(`
+      SELECT
+        id,
+        slug,
+        title,
+        thesis,
+        audience,
+        status,
+        workspace_path,
+        remote_article_id,
+        last_remote_edited_at,
+        created_at,
+        updated_at
+      FROM editorial_projects
+      ORDER BY updated_at DESC, created_at DESC
+    `).all() as Array<Record<string, unknown>>;
+
+    return rows.map(mapEditorialProject);
+  }
+
   setEditorialProjectStatus(
     reference: string,
     status: "proposed" | "approved",

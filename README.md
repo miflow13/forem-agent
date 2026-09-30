@@ -41,6 +41,10 @@ revision, approval, and publication.
 - optional `analyze --interpret` structured model interpretation
 - `plan <idea>` or `plan tag:<tag>` to create an editable proposed brief
 - `approve <project-id-or-slug>` as the explicit planning approval gate
+- `draft <project-id-or-slug>` for section-by-section generation from the current approved `brief.md`
+- draft creation refuses to overwrite an existing human-editable `draft.md`
+- polished terminal UX with progress output, concise errors, `projects`/`status` navigation, and `NO_COLOR` support
+- non-destructive `revise` passes for structure, voice, and claim review
 - OpenAI Responses adapter with strict JSON output and response storage disabled
 - fake model adapter for deterministic tests
 - GitHub Actions CI
@@ -117,14 +121,69 @@ npm run dev -- approve <project-id-or-slug>
 ```
 
 Approval changes both the local project record and `brief.md` to
-`status: approved`. Future `draft` work will refuse unapproved projects.
+`status: approved`.
+
+## Drafting workflow
+
+Drafting reads the current `brief.md` from disk, so edits made after planning
+and before drafting remain authoritative.
+
+```bash
+npm run dev -- draft <project-id-or-slug>
+```
+
+The model is called once per outline section rather than generating the whole
+article in one pass. The result is written to:
+
+```text
+articles/
+└── <project-slug>/
+    ├── brief.md
+    └── draft.md
+```
+
+Personal-experience placeholders and claims-to-verify are carried into the
+draft as visible author notes instead of being invented or silently resolved
+by the model. If `draft.md` already exists, meldr refuses to overwrite it.
+
+## Revision workflow
+
+Revisions are deliberately non-destructive. They read the current `draft.md`
+from disk, so manual edits remain authoritative, then write proposals under
+`revisions/` instead of overwriting the draft.
+
+```bash
+# Tighten pacing, transitions, repetition, and article-level structure
+npm run dev -- revise <project-id-or-slug> --pass structure
+
+# Improve prose rhythm and remove generic AI-written phrasing
+npm run dev -- revise <project-id-or-slug> --pass voice
+
+# Identify factual and technical claims that still need source verification
+npm run dev -- revise <project-id-or-slug> --pass claim-check
+```
+
+The claim-check pass is a verification checklist, not independent fact
+verification. It does not invent sources or claim that a statement was
+verified.
+
+## Navigation
+
+```bash
+npm run dev -- projects
+npm run dev -- status <project-id-or-slug>
+```
+
+`projects` (alias `ls`) lists project stages and files. `status` (alias
+`show`) reports the current stage and suggests the next workflow command.
+Long model operations print progress, and expected user errors are concise by
+default. Set `MELDR_DEBUG=1` for full stack traces and `NO_COLOR=1` to
+disable ANSI styling.
 
 ## Planned commands
 
-`draft`, `revise`, and `push` are next. Drafting will work section by
-section from an approved brief and preserve human edits. `push` will only
-create or update unpublished Forem drafts and will include remote timestamp
-conflict checks.
+`push` is next. It will only create or update unpublished Forem drafts and
+will include remote timestamp conflict checks.
 
 ## Security invariants
 
