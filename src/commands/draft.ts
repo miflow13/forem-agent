@@ -27,13 +27,6 @@ export async function runDraft(
   injectedModel?: StructuredTextModel,
   onProgress?: (event: DraftProgressEvent) => void,
 ): Promise<DraftResult> {
-  const model = injectedModel ?? createConfiguredModel(config);
-  if (!model) {
-    throw new Error(
-      "Drafting requires a configured model. Set OPENAI_API_KEY or inject a StructuredTextModel.",
-    );
-  }
-
   const database = new AgentDatabase(config.databasePath);
 
   try {
@@ -44,6 +37,11 @@ export async function runDraft(
     if (project.status !== "approved") {
       throw new Error(
         `Project ${project.slug} is "${project.status}", not "approved". Approve the brief before drafting.`,
+      );
+    }
+    if (project.writingMode !== "ai_first_draft") {
+      throw new Error(
+        `Choose AI first draft mode explicitly before drafting ${project.slug}.`,
       );
     }
 
@@ -65,6 +63,13 @@ export async function runDraft(
     if (existsSync(editorialNotesPath)) {
       throw new Error(
         `Editorial notes already exist: ${editorialNotesPath}. Refusing to overwrite author-owned notes.`,
+      );
+    }
+
+    const model = injectedModel ?? createConfiguredModel(config);
+    if (!model) {
+      throw new Error(
+        "Drafting requires a configured model. Set OPENAI_API_KEY or inject a StructuredTextModel.",
       );
     }
 

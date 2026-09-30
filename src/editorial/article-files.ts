@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import type { WritingMode } from "../storage/database.js";
 
 export type ExtractedEditorialNotes = {
   articleMarkdown: string;
@@ -146,6 +147,26 @@ export function renderWorkingMarkdown(input: {
     "---",
     "",
     stripFrontmatter(input.articleMarkdown).trim(),
+    "",
+  ].join("\n");
+}
+
+export function renderAuthorWorkingMarkdown(input: {
+  projectId: string;
+  slug: string;
+  title: string;
+  writingMode: Extract<WritingMode, "human" | "section_assisted">;
+}): string {
+  return [
+    "---",
+    `project_id: ${input.projectId}`,
+    `slug: ${input.slug}`,
+    "status: working",
+    `writing_mode: ${input.writingMode}`,
+    "source_brief: brief.md",
+    "---",
+    "",
+    `# ${input.title}`,
     "",
   ].join("\n");
 }
