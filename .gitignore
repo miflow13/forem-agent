@@ -1,0 +1,7 @@
+node_modules/
+dist/
+.env
+.forem-agent/
+*.db
+*.db-shm
+*.db-wal
