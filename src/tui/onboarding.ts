@@ -44,7 +44,7 @@ type KeyAction = "keep" | "replace";
 
 export async function ensureFirstRunOnboarding(
   initialConfig: AppConfig,
-): Promise<AppConfig> {
+): Promise<AppConfig | null> {
   const markerPath = onboardingMarkerPath(initialConfig);
   const configured = isModelConfigured(initialConfig);
 
@@ -90,7 +90,7 @@ export async function ensureFirstRunOnboarding(
 
   if (!action || action === "exit") {
     clearScreen();
-    return initialConfig;
+    return null;
   }
 
   if (action === "continue") {
