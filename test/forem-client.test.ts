@@ -52,6 +52,37 @@ test("public Forem requests use V1 media type without leaking the API key", asyn
   assert.equal(result[0]?.id, 42);
 });
 
+
+test("public article lists normalize impossible negative counters instead of aborting research", async () => {
+  const fakeFetch: typeof fetch = async () =>
+    new Response(
+      JSON.stringify([
+        {
+          id: 77,
+          title: "Odd upstream counters",
+          slug: "odd-upstream-counters",
+          url: "https://dev.to/example/odd-upstream-counters",
+          comments_count: -1,
+          public_reactions_count: -2,
+          positive_reactions_count: -3,
+          published_timestamp: "2026-09-30T10:00:00Z",
+          reading_time_minutes: 4,
+          tag_list: ["typescript"],
+          user: { username: "example" }
+        }
+      ]),
+      { status: 200 },
+    );
+
+  const client = new ForemClient("https://dev.to/api", undefined, fakeFetch);
+  const articles = await client.listArticles({ page: 1, perPage: 30 });
+
+  assert.equal(articles.length, 1);
+  assert.equal(articles[0]?.comments_count, 0);
+  assert.equal(articles[0]?.public_reactions_count, 0);
+  assert.equal(articles[0]?.positive_reactions_count, 0);
+});
+
 test("authenticated author requests attach the API key only at the HTTP boundary", async () => {
   let requestedHeaders: Headers | undefined;
 
