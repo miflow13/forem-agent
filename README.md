@@ -1,7 +1,8 @@
-# forem-agent
-meldr
+# meldr
 
-A local-first editorial intelligence CLI for Forem/DEV writers.
+A local-first editorial copilot for Forem/DEV writers.
+
+> Repository name: `forem-agent`. The user-facing command and product name are `meldr`.
 
 The goal is not to auto-publish AI-written articles. The agent gathers public
 Forem signals, stores reproducible research locally, runs deterministic
@@ -43,11 +44,16 @@ revision, approval, and publication.
 - `approve <project-id-or-slug>` as the explicit planning approval gate
 - `draft <project-id-or-slug>` for section-by-section generation from the current approved `brief.md`
 - draft creation writes an immutable `draft.md` article snapshot plus separate `editorial-notes.md`
-- beginner-friendly interactive terminal UI with arrow-key navigation, recommended next steps, inline revision acceptance, file previews, and editor launching
+- first-run onboarding that explains meldr before asking the writer to choose an AI provider
+- OpenAI, Claude/Anthropic, and custom OpenAI-Responses-compatible provider setup
+- masked API-key entry, local gitignored `.env` persistence, and a small connection check before entering the app
+- beginner-friendly interactive terminal UI with arrow-key navigation, AI/model status, obvious recommended next steps, inline revision acceptance, file previews, and editor launching
+- in-app **AI settings** for changing provider, model, or API key later
 - polished scripted CLI with progress output, concise errors, `projects`/`status` navigation, and `NO_COLOR` support
 - non-destructive `revise` passes for structure, voice, and claim review
 - explicit `accept` promotion into `working.md`, with stale-revision protection and revision chaining
 - OpenAI Responses adapter with strict JSON output and response storage disabled
+- Anthropic Messages adapter using schema-constrained tool output
 - fake model adapter for deterministic tests
 - GitHub Actions CI
 
@@ -59,17 +65,28 @@ Node.js 22.5+ (the project uses Node's built-in `node:sqlite` module).
 
 ```bash
 npm install
-cp .env.example .env
 npm run dev -- init
-```
-
-For normal use, launch the interactive interface:
-
-```bash
 npm run dev
 ```
 
-Once built/linked locally, the installed command is simply:
+The first interactive launch introduces the workflow and asks which AI meldr
+should use:
+
+```text
+Welcome to meldr
+      ↓
+Choose OpenAI / Claude / compatible custom provider
+      ↓
+Choose a model
+      ↓
+Enter API key with masked input
+      ↓
+Connection check
+      ↓
+Main meldr workspace
+```
+
+For local development, `npm run dev` opens the TUI. Once built and linked:
 
 ```bash
 npm run build
@@ -77,15 +94,47 @@ npm link
 meldr
 ```
 
-The original `forem-agent` executable remains as a compatibility alias.
+You can rerun provider setup at any time with `meldr setup` or choose
+**AI settings** inside the TUI. The old `forem-agent` executable remains as a
+compatibility alias.
 
 Local state is written to `.forem-agent/forem-agent.db`. Editable article
 projects are written to `./articles` unless `FOREM_AGENT_WORKSPACE` is set.
+The generated `.env` is local and gitignored. On filesystems that support
+POSIX permissions, meldr restricts it to mode `0600`.
+
+## AI providers
+
+The guided setup currently supports:
+
+- **OpenAI** through the Responses API. The default model is `gpt-5.6`.
+- **Claude** through Anthropic's Messages API. The default model is
+  `claude-sonnet-5`.
+- **Custom OpenAI-compatible** endpoints that implement the Responses API.
+
+Advanced users can skip the wizard and configure `.env` manually. The
+provider-neutral variables are:
+
+```bash
+MELDR_MODEL_PROVIDER=openai
+MELDR_MODEL_API_KEY=...
+MELDR_MODEL=gpt-5.6
+MELDR_MODEL_BASE_URL=https://api.openai.com/v1
+```
+
+Existing `OPENAI_API_KEY` / `OPENAI_MODEL` and
+`ANTHROPIC_API_KEY` / `ANTHROPIC_MODEL` setups are still recognized when an
+explicit `MELDR_MODEL_PROVIDER` is not configured. Process environment
+variables keep precedence over values loaded from `.env`.
 
 ## Interactive mode
 
 Running `meldr` with no arguments opens the beginner-friendly terminal UI.
-You do not need to remember slugs, revision filenames, or long command flags.
+You do not need to remember slugs, revision filenames, provider environment
+variables, or long command flags.
+
+The header shows the active AI provider/model, and project screens put the
+recommended next action first.
 
 The main screen lets you:
 
@@ -95,11 +144,12 @@ The main screen lets you:
 - refresh the local DEV research sample
 - explore deterministic tag opportunities
 - analyze a DEV article
+- change AI provider/model/key without editing configuration files
 - open the current brief/article in `$VISUAL`, `$EDITOR`, or VS Code
 - run structure, voice, and claim reviews
 - accept structure/voice proposals without copying timestamped filenames
 
-Arrow keys move, Enter selects, and `q` goes back or exits. The TUI uses the
+Arrow keys move, Enter chooses, and `q` goes back or exits. The TUI uses the
 same underlying commands and safety invariants as the scripted CLI.
 
 ## Analysis
@@ -237,8 +287,8 @@ invent sources or claim that a statement was independently verified.
 ## Navigation
 
 ```bash
-npm run dev -- projects
-npm run dev -- status <project-id-or-slug>
+meldr projects
+meldr status <project-id-or-slug>
 ```
 
 `projects` (alias `ls`) lists project stages and files. `status` (alias
@@ -254,10 +304,13 @@ will include remote timestamp conflict checks.
 
 ## Security invariants
 
-- Forem and model API keys stay in process environment variables.
+- Forem and model API keys stay in process memory and the local gitignored `.env` configuration file.
+- Interactive API-key entry is masked.
+- The onboarding connection check never places the API key in the prompt body.
 - Public Forem requests do not carry the Forem API key.
 - API keys are never persisted to SQLite.
 - API keys are never sent to model context.
-- API keys are never written to generated files or logs.
-- Model response persistence is disabled in the OpenAI adapter.
+- API keys are never written to briefs, drafts, revision files, or logs.
+- OpenAI response persistence is disabled in the OpenAI adapter.
+- Claude structured output uses the Anthropic Messages tool boundary; credentials stay in request headers.
 - No command may publish an article directly.
