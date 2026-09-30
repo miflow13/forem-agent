@@ -7,7 +7,9 @@ import { runOpportunities } from "./commands/opportunities.js";
 import { approvePlan, runPlan } from "./commands/plan.js";
 import { getProjectStatus, listProjects } from "./commands/projects.js";
 import { runResearch } from "./commands/research.js";
+import { runRevision } from "./commands/revise.js";
 import { interpretArticleAnalysis } from "./editorial/interpreter.js";
+import { revisionPasses } from "./editorial/reviser.js";
 import { createConfiguredModel } from "./providers/configured-model.js";
 import {
   brand,
@@ -39,11 +41,12 @@ program
     [
       "",
       "Workflow:",
-      "  research → opportunities → plan → approve → draft",
+      "  research → opportunities → plan → approve → draft → revise",
       "",
       "Navigation:",
       "  forem-agent projects        list editorial projects",
       "  forem-agent status <slug>   show one project's state and next step",
+      "  forem-agent revise <slug> --pass structure|voice|claim-check",
       "",
       "Set MELDR_DEBUG=1 to show full stack traces for errors.",
     ].join("\n"),
@@ -365,6 +368,43 @@ program
     console.log(
       style.dim(
         "Structure, claim-check, and voice revision passes are the next workflow slice.",
+      ),
+    );
+  });
+
+program
+  .command("revise <project>")
+  .description("Create a non-destructive revision proposal for an existing draft")
+  .addOption(
+    new Option("--pass <pass>", "revision pass")
+      .choices([...revisionPasses])
+      .makeOptionMandatory(),
+  )
+  .action(async (project, options) => {
+    const config = loadConfig();
+    ensureHome(config);
+
+    const pass = options.pass as (typeof revisionPasses)[number];
+    if (pass === "claim-check") {
+      info("Reviewing the draft for claims that still need source verification…");
+    } else {
+      info(`Running ${pass} revision pass with ${config.openaiModel}…`);
+    }
+
+    const result = await runRevision(config, project, pass);
+
+    success(`${pass} revision proposal created`);
+    keyValue("Project", result.slug);
+    keyValue("Model", result.model);
+    keyValue("Output", result.outputPath);
+
+    section("Summary");
+    console.log(result.summary);
+
+    section("Safety");
+    console.log(
+      style.dim(
+        "draft.md was not modified. Review the proposal before applying any changes.",
       ),
     );
   });
