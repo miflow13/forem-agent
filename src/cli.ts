@@ -4,6 +4,8 @@ import { ensureHome, loadConfig } from "./config.js";
 import { runAnalyze } from "./commands/analyze.js";
 import { runOpportunities } from "./commands/opportunities.js";
 import { runResearch } from "./commands/research.js";
+import { interpretArticleAnalysis } from "./editorial/interpreter.js";
+import { createConfiguredModel } from "./providers/configured-model.js";
 
 const program = new Command();
 
@@ -99,14 +101,44 @@ program
       .choices(["table", "json"])
       .default("table"),
   )
+  .option(
+    "--interpret",
+    "ask the configured model to interpret the deterministic evidence packet",
+  )
   .action(async (article, options) => {
     const config = loadConfig();
     ensureHome(config);
 
     const result = await runAnalyze(config, article);
+    let interpreted:
+      | Awaited<ReturnType<typeof interpretArticleAnalysis>>
+      | null = null;
+
+    if (options.interpret) {
+      const model = createConfiguredModel(config);
+      if (!model) {
+        throw new Error(
+          "Model interpretation requires OPENAI_API_KEY. Deterministic analysis does not.",
+        );
+      }
+
+      interpreted = await interpretArticleAnalysis(
+        model,
+        result.analysis,
+      );
+    }
 
     if (options.format === "json") {
-      console.log(JSON.stringify(result, null, 2));
+      console.log(
+        JSON.stringify(
+          {
+            ...result,
+            interpretation: interpreted,
+          },
+          null,
+          2,
+        ),
+      );
       return;
     }
 
@@ -154,6 +186,28 @@ program
       );
     }
 
+    if (interpreted) {
+      console.log(`Model interpretation (${interpreted.model})`);
+      console.log(interpreted.interpretation.summary);
+
+      printStringList(
+        "Observations",
+        interpreted.interpretation.observations,
+      );
+      printStringList(
+        "Possible explanations",
+        interpreted.interpretation.possible_explanations,
+      );
+      printStringList(
+        "Editorial lessons",
+        interpreted.interpretation.editorial_lessons,
+      );
+      printStringList(
+        "Model cautions",
+        interpreted.interpretation.cautions,
+      );
+    }
+
     console.log("Limitations");
     for (const limitation of analysis.limitations) {
       console.log(`- ${limitation}`);
@@ -168,4 +222,10 @@ function parsePositiveInt(value: string): number {
     throw new Error(`Expected a positive integer, got "${value}"`);
   }
   return parsed;
+}
+
+function printStringList(title: string, values: string[]): void {
+  if (values.length === 0) return;
+  console.log(title);
+  for (const value of values) console.log(`- ${value}`);
 }
