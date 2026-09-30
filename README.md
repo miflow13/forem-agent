@@ -42,9 +42,10 @@ revision, approval, and publication.
 - `plan <idea>` or `plan tag:<tag>` to create an editable proposed brief
 - `approve <project-id-or-slug>` as the explicit planning approval gate
 - `draft <project-id-or-slug>` for section-by-section generation from the current approved `brief.md`
-- draft creation refuses to overwrite an existing human-editable `draft.md`
+- draft creation writes an immutable `draft.md` article snapshot plus separate `editorial-notes.md`
 - polished terminal UX with progress output, concise errors, `projects`/`status` navigation, and `NO_COLOR` support
 - non-destructive `revise` passes for structure, voice, and claim review
+- explicit `accept` promotion into `working.md`, with stale-revision protection and revision chaining
 - OpenAI Responses adapter with strict JSON output and response storage disabled
 - fake model adapter for deterministic tests
 - GitHub Actions CI
@@ -139,33 +140,64 @@ article in one pass. The result is written to:
 articles/
 └── <project-slug>/
     ├── brief.md
-    └── draft.md
+    ├── draft.md
+    └── editorial-notes.md
 ```
 
-Personal-experience placeholders and claims-to-verify are carried into the
-draft as visible author notes instead of being invented or silently resolved
-by the model. If `draft.md` already exists, meldr refuses to overwrite it.
+`draft.md` is the immutable first-generation article snapshot.
+Personal-experience placeholders and claims-to-verify live in
+`editorial-notes.md`, not in the publishable article body. Meldr refuses to
+overwrite either file during draft creation. Existing legacy drafts that still
+contain those note sections are migrated non-destructively the next time a
+revision runs.
 
 ## Revision workflow
 
-Revisions are deliberately non-destructive. They read the current `draft.md`
-from disk, so manual edits remain authoritative, then write proposals under
-`revisions/` instead of overwriting the draft.
+Revisions are deliberately non-destructive. The first pass reads `draft.md`.
+After you accept a structure or voice proposal, future passes automatically
+read `working.md` instead. This makes accepted human decisions the source for
+the next model pass.
 
 ```bash
 # Tighten pacing, transitions, repetition, and article-level structure
 npm run dev -- revise <project-id-or-slug> --pass structure
 
-# Improve prose rhythm and remove generic AI-written phrasing
+# Promote the reviewed proposal into working.md
+npm run dev -- accept <project-id-or-slug> <revision-file>
+
+# The next pass now reads working.md
 npm run dev -- revise <project-id-or-slug> --pass voice
+
+# Promote that proposal too
+npm run dev -- accept <project-id-or-slug> <revision-file>
 
 # Identify factual and technical claims that still need source verification
 npm run dev -- revise <project-id-or-slug> --pass claim-check
 ```
 
-The claim-check pass is a verification checklist, not independent fact
-verification. It does not invent sources or claim that a statement was
-verified.
+The workspace becomes:
+
+```text
+articles/
+└── <project-slug>/
+    ├── brief.md
+    ├── draft.md
+    ├── working.md
+    ├── editorial-notes.md
+    └── revisions/
+        ├── ...-structure.md
+        ├── ...-voice.md
+        └── ...-claim-check.md
+```
+
+`draft.md` is never changed by revision acceptance. `working.md` is the
+current human-approved article state and may be edited directly. Each proposal
+records the exact source file and SHA-256 digest it reviewed; `accept` refuses
+a stale proposal if that source changed afterward.
+
+Structure and voice proposals can be accepted. Claim-check reports cannot:
+they are verification checklists, not article rewrites. Claim-check does not
+invent sources or claim that a statement was independently verified.
 
 ## Navigation
 
