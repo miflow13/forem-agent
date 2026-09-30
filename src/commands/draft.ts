@@ -5,6 +5,7 @@ import {
   generateDraftSections,
   parseDraftBrief,
   renderDraftMarkdown,
+  type DraftProgressEvent,
 } from "../editorial/drafter.js";
 import { createConfiguredModel } from "../providers/configured-model.js";
 import type { StructuredTextModel } from "../providers/structured-text-model.js";
@@ -22,6 +23,7 @@ export async function runDraft(
   config: AppConfig,
   reference: string,
   injectedModel?: StructuredTextModel,
+  onProgress?: (event: DraftProgressEvent) => void,
 ): Promise<DraftResult> {
   const model = injectedModel ?? createConfiguredModel(config);
   if (!model) {
@@ -62,7 +64,7 @@ export async function runDraft(
       );
     }
 
-    const generated = await generateDraftSections(model, brief);
+    const generated = await generateDraftSections(model, brief, onProgress);
     const markdown = renderDraftMarkdown({
       projectId: project.id,
       slug: project.slug,
