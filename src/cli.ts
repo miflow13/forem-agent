@@ -13,6 +13,7 @@ import { runRevision } from "./commands/revise.js";
 import { interpretArticleAnalysis } from "./editorial/interpreter.js";
 import { revisionPasses } from "./editorial/reviser.js";
 import { createConfiguredModel } from "./providers/configured-model.js";
+import { runInteractive } from "./tui/app.js";
 import {
   brand,
   bullet,
@@ -37,6 +38,7 @@ program
   .name("forem-agent")
   .description("meldr — local-first editorial intelligence for Forem / DEV")
   .version("0.1.0")
+  .usage("[command]")
   .showHelpAfterError()
   .addHelpText(
     "after",
@@ -530,9 +532,31 @@ program
     }
   });
 
+program
+  .command("interactive")
+  .alias("ui")
+  .description("Open the beginner-friendly interactive meldr interface")
+  .action(async () => {
+    const config = loadConfig();
+    ensureHome(config);
+    await runInteractive(config);
+  });
+
 if (process.argv.length <= 2) {
-  brand();
-  program.outputHelp();
+  try {
+    const config = loadConfig();
+    ensureHome(config);
+    await runInteractive(config);
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : String(error);
+    console.error("");
+    fail(message);
+    console.error(
+      style.dim("Use --help to see the regular command-line interface."),
+    );
+    process.exitCode = 1;
+  }
 } else {
   try {
     await program.parseAsync(process.argv);
