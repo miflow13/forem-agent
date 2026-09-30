@@ -43,7 +43,8 @@ revision, approval, and publication.
 - `approve <project-id-or-slug>` as the explicit planning approval gate
 - `draft <project-id-or-slug>` for section-by-section generation from the current approved `brief.md`
 - draft creation writes an immutable `draft.md` article snapshot plus separate `editorial-notes.md`
-- polished terminal UX with progress output, concise errors, `projects`/`status` navigation, and `NO_COLOR` support
+- beginner-friendly interactive terminal UI with arrow-key navigation, recommended next steps, inline revision acceptance, file previews, and editor launching
+- polished scripted CLI with progress output, concise errors, `projects`/`status` navigation, and `NO_COLOR` support
 - non-destructive `revise` passes for structure, voice, and claim review
 - explicit `accept` promotion into `working.md`, with stale-revision protection and revision chaining
 - OpenAI Responses adapter with strict JSON output and response storage disabled
@@ -60,12 +61,46 @@ Node.js 22.5+ (the project uses Node's built-in `node:sqlite` module).
 npm install
 cp .env.example .env
 npm run dev -- init
-npm run dev -- research --pages 2 --per-page 30
-npm run dev -- opportunities
 ```
+
+For normal use, launch the interactive interface:
+
+```bash
+npm run dev
+```
+
+Once built/linked locally, the installed command is simply:
+
+```bash
+npm run build
+npm link
+meldr
+```
+
+The original `forem-agent` executable remains as a compatibility alias.
 
 Local state is written to `.forem-agent/forem-agent.db`. Editable article
 projects are written to `./articles` unless `FOREM_AGENT_WORKSPACE` is set.
+
+## Interactive mode
+
+Running `meldr` with no arguments opens the beginner-friendly terminal UI.
+You do not need to remember slugs, revision filenames, or long command flags.
+
+The main screen lets you:
+
+- continue the most recent article by title
+- browse all projects and their current workflow state
+- start a new article from a plain-English idea
+- refresh the local DEV research sample
+- explore deterministic tag opportunities
+- analyze a DEV article
+- open the current brief/article in `$VISUAL`, `$EDITOR`, or VS Code
+- run structure, voice, and claim reviews
+- accept structure/voice proposals without copying timestamped filenames
+
+Arrow keys move, Enter selects, and `q` goes back or exits. The TUI uses the
+same underlying commands and safety invariants as the scripted CLI.
 
 ## Analysis
 
