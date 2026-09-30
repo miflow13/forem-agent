@@ -4,6 +4,7 @@ import type { AppConfig } from "../config.js";
 import {
   AgentDatabase,
   type StoredEditorialProject,
+  type WritingMode,
 } from "../storage/database.js";
 
 export type ProjectSummary = {
@@ -17,6 +18,7 @@ export type ProjectSummary = {
   hasWorking: boolean;
   hasEditorialNotes: boolean;
   acceptedPass: "structure" | "voice" | null;
+  writingMode: WritingMode | null;
   stage: "proposed" | "approved" | "draft" | "working" | string;
   nextAction: string;
 };
@@ -71,6 +73,11 @@ function summarizeProject(project: StoredEditorialProject): ProjectSummary {
     : hasDraft
       ? "draft"
       : project.status;
+  const writingMode = effectiveWritingMode(
+    project,
+    hasDraft,
+    hasWorking,
+  );
 
   let nextAction: string;
 
@@ -79,7 +86,7 @@ function summarizeProject(project: StoredEditorialProject): ProjectSummary {
   } else if (stage === "proposed") {
     nextAction = `meldr approve ${project.slug}`;
   } else if (stage === "approved") {
-    nextAction = `meldr draft ${project.slug}`;
+    nextAction = `meldr mode ${project.slug}`;
   } else if (stage === "draft") {
     nextAction = `meldr revise ${project.slug} --pass structure`;
   } else if (stage === "working") {
@@ -99,9 +106,21 @@ function summarizeProject(project: StoredEditorialProject): ProjectSummary {
     hasWorking,
     hasEditorialNotes,
     acceptedPass,
+    writingMode,
     stage,
     nextAction,
   };
+}
+
+function effectiveWritingMode(
+  project: StoredEditorialProject,
+  hasDraft: boolean,
+  hasWorking: boolean,
+): WritingMode | null {
+  if (project.writingMode) return project.writingMode;
+  if (hasDraft) return "ai_first_draft";
+  if (hasWorking) return "human";
+  return null;
 }
 
 function acceptedRevisionPass(
