@@ -2,6 +2,7 @@
 import { Command, Option } from "commander";
 import { ensureHome, loadConfig, loadProjectEnv } from "./config.js";
 import { runAnalyze } from "./commands/analyze.js";
+import { runDraft } from "./commands/draft.js";
 import { runOpportunities } from "./commands/opportunities.js";
 import { approvePlan, runPlan } from "./commands/plan.js";
 import { runResearch } from "./commands/research.js";
@@ -252,7 +253,22 @@ program
     const approved = approvePlan(config, project);
     console.log(`Approved: ${approved.slug}`);
     console.log(`Workspace: ${approved.workspacePath}`);
-    console.log("The project is now eligible for the future draft workflow.");
+    console.log("The project is now eligible for drafting.");
+  });
+
+program
+  .command("draft <project>")
+  .description("Generate draft.md section-by-section from an approved brief")
+  .action(async (project) => {
+    const config = loadConfig();
+    ensureHome(config);
+
+    const drafted = await runDraft(config, project);
+    console.log(`Drafted: ${drafted.slug}`);
+    console.log(`Sections: ${drafted.sectionCount}`);
+    console.log(`Model: ${drafted.model}`);
+    console.log(`Draft: ${drafted.draftPath}`);
+    console.log("Edit draft.md directly; meldr will not overwrite it.");
   });
 
 await program.parseAsync(process.argv);
