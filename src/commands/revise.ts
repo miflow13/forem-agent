@@ -4,8 +4,13 @@ import {
   readFileSync,
   writeFileSync,
 } from "node:fs";
-import { resolve } from "node:path";
+import { basename, resolve } from "node:path";
 import type { AppConfig } from "../config.js";
+import {
+  extractEditorialNotes,
+  mergeEditorialNotes,
+  sha256,
+} from "../editorial/article-files.js";
 import {
   renderClaimReview,
   renderRewriteProposal,
@@ -21,6 +26,7 @@ export type RevisionResult = {
   slug: string;
   pass: RevisionPass;
   outputPath: string;
+  sourceArticle: string;
   model: string;
   summary: string;
 };
@@ -48,6 +54,11 @@ export async function runRevision(
 
     const briefPath = resolve(project.workspacePath, "brief.md");
     const draftPath = resolve(project.workspacePath, "draft.md");
+    const workingPath = resolve(project.workspacePath, "working.md");
+    const editorialNotesPath = resolve(
+      project.workspacePath,
+      "editorial-notes.md",
+    );
 
     if (!existsSync(briefPath)) {
       throw new Error(`Project brief is missing: ${briefPath}`);
@@ -58,19 +69,37 @@ export async function runRevision(
       );
     }
 
+    const sourcePath = existsSync(workingPath) ? workingPath : draftPath;
+    const sourceMarkdown = readFileSync(sourcePath, "utf8");
+    const extracted = extractEditorialNotes(sourceMarkdown);
+
+    let editorialNotesMarkdown = existsSync(editorialNotesPath)
+      ? readFileSync(editorialNotesPath, "utf8")
+      : null;
+
+    const mergedNotes = mergeEditorialNotes(
+      editorialNotesMarkdown,
+      extracted.notesMarkdown,
+    );
+    if (mergedNotes && mergedNotes !== editorialNotesMarkdown) {
+      writeFileSync(editorialNotesPath, mergedNotes, "utf8");
+      editorialNotesMarkdown = mergedNotes;
+    }
+
     const briefMarkdown = readFileSync(briefPath, "utf8");
-    const draftMarkdown = readFileSync(draftPath, "utf8");
+    const sourceHash = sha256(sourceMarkdown);
+    const sourceArticle = basename(sourcePath);
+
     const revision = await runRevisionPass(model, pass, {
       briefMarkdown,
-      draftMarkdown,
+      articleMarkdown: extracted.articleMarkdown,
+      editorialNotesMarkdown,
     });
 
     const revisionsDir = resolve(project.workspacePath, "revisions");
     mkdirSync(revisionsDir, { recursive: true });
 
-    const stamp = new Date()
-      .toISOString()
-      .replace(/[:.]/g, "-");
+    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
     const outputPath = resolve(
       revisionsDir,
       `${stamp}-${pass}.md`,
@@ -79,13 +108,15 @@ export async function runRevision(
     const rendered =
       revision.kind === "claim-review"
         ? renderClaimReview({
-            sourceDraft: "draft.md",
+            sourceArticle,
+            sourceSha256: sourceHash,
             model: revision.model,
             review: revision.data,
           })
         : renderRewriteProposal({
             pass: pass as Exclude<RevisionPass, "claim-check">,
-            sourceDraft: "draft.md",
+            sourceArticle,
+            sourceSha256: sourceHash,
             model: revision.model,
             revision: revision.data,
           });
@@ -100,6 +131,7 @@ export async function runRevision(
       slug: project.slug,
       pass,
       outputPath,
+      sourceArticle,
       model: revision.model,
       summary: revision.data.summary,
     };
