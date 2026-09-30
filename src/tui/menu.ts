@@ -1,7 +1,7 @@
 import readline from "node:readline";
 import { createInterface } from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
-import { style, truncate } from "../ui/terminal.js";
+import { renderBrand, style, truncate } from "../ui/terminal.js";
 
 export type MenuOption<T> = {
   label: string;
@@ -113,8 +113,7 @@ function renderMenu<T>(
     Math.min(output.columns ?? 80, 96),
   );
 
-  console.log(style.bold(style.magenta("meldr")));
-  console.log(style.dim("editorial copilot for Forem / DEV"));
+  renderBrand(width);
   console.log(style.dim("─".repeat(Math.min(width, 72))));
   console.log("");
   console.log(style.bold(inputOptions.title));
