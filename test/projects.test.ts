@@ -14,8 +14,10 @@ test("projects navigation reflects draft and accepted working states", () => {
     homeDir: root,
     databasePath: join(root, "forem-agent.db"),
     workspaceDir: join(root, "articles"),
-    openaiModel: "fake-model",
-    openaiBaseUrl: "https://api.openai.com/v1",
+    modelProvider: "openai",
+    modelApiKey: "fake-key",
+    modelName: "fake-model",
+    modelBaseUrl: "https://api.openai.com/v1",
   };
 
   try {
