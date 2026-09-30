@@ -19,6 +19,7 @@ import { interpretArticleAnalysis } from "./editorial/interpreter.js";
 import { revisionPasses } from "./editorial/reviser.js";
 import { createConfiguredModel } from "./providers/configured-model.js";
 import { runInteractive } from "./tui/app.js";
+import { runAiSettings } from "./tui/onboarding.js";
 import {
   brand,
   bullet,
@@ -40,7 +41,7 @@ loadProjectEnv();
 const program = new Command();
 
 program
-  .name("forem-agent")
+  .name("meldr")
   .description("meldr — local-first editorial intelligence for Forem / DEV")
   .version("0.1.0")
   .usage("[command]")
@@ -53,10 +54,10 @@ program
       "  research → opportunities → plan → approve → draft → revise → accept",
       "",
       "Navigation:",
-      "  forem-agent projects        list editorial projects",
-      "  forem-agent status <slug>   show one project's state and next step",
-      "  forem-agent revise <slug> --pass structure|voice|claim-check",
-      "  forem-agent accept <slug> <revision-file>",
+      "  meldr projects              list editorial projects",
+      "  meldr status <slug>         show one project's state and next step",
+      "  meldr revise <slug> --pass structure|voice|claim-check",
+      "  meldr accept <slug> <revision-file>",
       "",
       "Set MELDR_DEBUG=1 to show full stack traces for errors.",
     ].join("\n"),
@@ -78,7 +79,8 @@ program
     keyValue("State", config.homeDir);
     keyValue("Articles", config.workspaceDir);
     section("Next");
-    info(command("forem-agent research --pages 2 --per-page 30"));
+    info("Open the guided interface:");
+    console.log(`  ${command("meldr")}`);
   });
 
 program
@@ -121,7 +123,7 @@ program
     );
     keyValue("Database", config.databasePath);
     section("Next");
-    info(command("forem-agent opportunities"));
+    info(command("meldr opportunities"));
   });
 
 program
@@ -173,7 +175,7 @@ program
     const first = opportunities[0];
     if (first) {
       section("Try one");
-      info(command(`forem-agent plan tag:${first.tag}`));
+      info(command(`meldr plan tag:${first.tag}`));
     }
   });
 
@@ -330,7 +332,7 @@ program
 
     section("Next");
     info("Review and edit brief.md. When the direction is yours:");
-    console.log(`  ${command(`forem-agent approve ${result.project.slug}`)}`);
+    console.log(`  ${command(`meldr approve ${result.project.slug}`)}`);
   });
 
 program
@@ -345,7 +347,7 @@ program
     keyValue("Workspace", approved.workspacePath);
 
     section("Next");
-    info(command(`forem-agent draft ${approved.slug}`));
+    info(command(`meldr draft ${approved.slug}`));
   });
 
 program
@@ -423,7 +425,7 @@ program
       section("Accept");
       info(
         command(
-          `forem-agent accept ${result.slug} ${basename(result.outputPath)}`,
+          `meldr accept ${result.slug} ${basename(result.outputPath)}`,
         ),
       );
     }
@@ -451,13 +453,13 @@ program
     if (accepted.pass === "structure") {
       info(
         command(
-          `forem-agent revise ${accepted.slug} --pass voice`,
+          `meldr revise ${accepted.slug} --pass voice`,
         ),
       );
     } else {
       info(
         command(
-          `forem-agent revise ${accepted.slug} --pass claim-check`,
+          `meldr revise ${accepted.slug} --pass claim-check`,
         ),
       );
     }
@@ -476,7 +478,7 @@ program
 
     if (projects.length === 0) {
       warn("No editorial projects yet.");
-      info(command('forem-agent plan "your article idea"'));
+      info(command('meldr plan "your article idea"'));
       return;
     }
 
@@ -503,7 +505,7 @@ program
     }
 
     section("Inspect");
-    info(command("forem-agent status <project-slug>"));
+    info(command("meldr status <project-slug>"));
   });
 
 program
@@ -535,6 +537,15 @@ program
     } else {
       info(item.nextAction);
     }
+  });
+
+program
+  .command("setup")
+  .description("Configure the AI provider, model, and API key")
+  .action(async () => {
+    const config = loadConfig();
+    ensureHome(config);
+    await runAiSettings(config);
   });
 
 program
