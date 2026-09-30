@@ -16,6 +16,7 @@ export type ProjectSummary = {
   hasDraft: boolean;
   hasWorking: boolean;
   hasEditorialNotes: boolean;
+  acceptedPass: "structure" | "voice" | null;
   stage: "proposed" | "approved" | "draft" | "working" | string;
   nextAction: string;
 };
@@ -61,6 +62,10 @@ function summarizeProject(project: StoredEditorialProject): ProjectSummary {
   const hasWorking = existsSync(workingPath);
   const hasEditorialNotes = existsSync(editorialNotesPath);
 
+  const acceptedPass = hasWorking
+    ? acceptedRevisionPass(workingPath)
+    : null;
+
   const stage = hasWorking
     ? "working"
     : hasDraft
@@ -78,7 +83,7 @@ function summarizeProject(project: StoredEditorialProject): ProjectSummary {
   } else if (stage === "draft") {
     nextAction = `forem-agent revise ${project.slug} --pass structure`;
   } else if (stage === "working") {
-    nextAction = nextWorkingAction(project.slug, workingPath);
+    nextAction = nextWorkingAction(project.slug, acceptedPass);
   } else {
     nextAction = "Inspect the project workspace before continuing.";
   }
@@ -93,21 +98,33 @@ function summarizeProject(project: StoredEditorialProject): ProjectSummary {
     hasDraft,
     hasWorking,
     hasEditorialNotes,
+    acceptedPass,
     stage,
     nextAction,
   };
 }
 
-function nextWorkingAction(slug: string, workingPath: string): string {
+function acceptedRevisionPass(
+  workingPath: string,
+): "structure" | "voice" | null {
   const markdown = readFileSync(workingPath, "utf8");
   const accepted = markdown.match(
     /^accepted_revision:\s*["']?([^"'\r\n]+)["']?$/m,
   )?.[1];
 
-  if (accepted?.includes("-structure.md")) {
+  if (accepted?.includes("-structure.md")) return "structure";
+  if (accepted?.includes("-voice.md")) return "voice";
+  return null;
+}
+
+function nextWorkingAction(
+  slug: string,
+  acceptedPass: "structure" | "voice" | null,
+): string {
+  if (acceptedPass === "structure") {
     return `forem-agent revise ${slug} --pass voice`;
   }
-  if (accepted?.includes("-voice.md")) {
+  if (acceptedPass === "voice") {
     return `forem-agent revise ${slug} --pass claim-check`;
   }
 
