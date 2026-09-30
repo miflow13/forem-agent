@@ -39,6 +39,14 @@ export class AgentDatabase {
         article_count INTEGER NOT NULL DEFAULT 0
       );
 
+      CREATE TABLE IF NOT EXISTS owner_runs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        started_at TEXT NOT NULL,
+        completed_at TEXT,
+        username TEXT NOT NULL,
+        article_count INTEGER NOT NULL DEFAULT 0
+      );
+
       CREATE TABLE IF NOT EXISTS articles (
         id INTEGER PRIMARY KEY,
         title TEXT NOT NULL,
@@ -69,6 +77,19 @@ export class AgentDatabase {
         FOREIGN KEY (article_id) REFERENCES articles(id) ON DELETE CASCADE
       );
 
+      CREATE TABLE IF NOT EXISTS owner_article_snapshots (
+        run_id INTEGER NOT NULL,
+        article_id INTEGER NOT NULL,
+        comments_count INTEGER NOT NULL,
+        public_reactions_count INTEGER NOT NULL,
+        positive_reactions_count INTEGER NOT NULL,
+        reading_time_minutes REAL NOT NULL,
+        captured_at TEXT NOT NULL,
+        PRIMARY KEY (run_id, article_id),
+        FOREIGN KEY (run_id) REFERENCES owner_runs(id) ON DELETE CASCADE,
+        FOREIGN KEY (article_id) REFERENCES articles(id) ON DELETE CASCADE
+      );
+
       CREATE INDEX IF NOT EXISTS idx_articles_published_timestamp
         ON articles(published_timestamp DESC);
 
@@ -77,6 +98,9 @@ export class AgentDatabase {
 
       CREATE INDEX IF NOT EXISTS idx_article_snapshots_article_id
         ON article_snapshots(article_id);
+
+      CREATE INDEX IF NOT EXISTS idx_owner_article_snapshots_article_id
+        ON owner_article_snapshots(article_id);
     `);
   }
 
@@ -103,7 +127,58 @@ export class AgentDatabase {
     `).run(new Date().toISOString(), articleCount, runId);
   }
 
+  startOwnerRun(username: string): number {
+    const result = this.db.prepare(`
+      INSERT INTO owner_runs (started_at, username)
+      VALUES (?, ?)
+    `).run(new Date().toISOString(), username);
+
+    return Number(result.lastInsertRowid);
+  }
+
+  finishOwnerRun(runId: number, articleCount: number): void {
+    this.db.prepare(`
+      UPDATE owner_runs
+      SET completed_at = ?, article_count = ?
+      WHERE id = ?
+    `).run(new Date().toISOString(), articleCount, runId);
+  }
+
   saveResearchArticles(runId: number, articles: ForemArticle[]): void {
+    this.saveArticlesWithSnapshots(
+      "article_snapshots",
+      runId,
+      articles,
+    );
+  }
+
+  saveOwnerArticles(runId: number, articles: ForemArticle[]): void {
+    this.saveArticlesWithSnapshots(
+      "owner_article_snapshots",
+      runId,
+      articles,
+    );
+  }
+
+  listLatestResearchArticles(): StoredResearchArticle[] {
+    return this.listLatestSnapshotArticles(
+      "article_snapshots",
+      "research_runs",
+    );
+  }
+
+  listLatestOwnerArticles(): StoredResearchArticle[] {
+    return this.listLatestSnapshotArticles(
+      "owner_article_snapshots",
+      "owner_runs",
+    );
+  }
+
+  private saveArticlesWithSnapshots(
+    snapshotTable: "article_snapshots" | "owner_article_snapshots",
+    runId: number,
+    articles: ForemArticle[],
+  ): void {
     const upsertArticle = this.db.prepare(`
       INSERT INTO articles (
         id,
@@ -138,7 +213,7 @@ export class AgentDatabase {
     `);
 
     const insertSnapshot = this.db.prepare(`
-      INSERT INTO article_snapshots (
+      INSERT INTO ${snapshotTable} (
         run_id,
         article_id,
         comments_count,
@@ -195,7 +270,10 @@ export class AgentDatabase {
     }
   }
 
-  listLatestResearchArticles(): StoredResearchArticle[] {
+  private listLatestSnapshotArticles(
+    snapshotTable: "article_snapshots" | "owner_article_snapshots",
+    runTable: "research_runs" | "owner_runs",
+  ): StoredResearchArticle[] {
     const rows = this.db.prepare(`
       SELECT
         a.id,
@@ -208,11 +286,11 @@ export class AgentDatabase {
         s.public_reactions_count,
         s.positive_reactions_count,
         s.reading_time_minutes
-      FROM article_snapshots s
+      FROM ${snapshotTable} s
       JOIN articles a ON a.id = s.article_id
       WHERE s.run_id = (
         SELECT id
-        FROM research_runs
+        FROM ${runTable}
         WHERE completed_at IS NOT NULL
         ORDER BY id DESC
         LIMIT 1

@@ -1,11 +1,13 @@
 import { z } from "zod";
 
 export const foremUserSchema = z.object({
+  id: z.number().int().optional(),
+  user_id: z.number().int().optional(),
   name: z.string().nullable().optional(),
   username: z.string(),
+  email: z.string().nullable().optional(),
   twitter_username: z.string().nullable().optional(),
   github_username: z.string().nullable().optional(),
-  user_id: z.number().int().optional(),
   website_url: z.string().nullable().optional(),
   profile_image: z.string().nullable().optional(),
   profile_image_90: z.string().nullable().optional(),
@@ -42,3 +44,4 @@ export const foremArticleSchema = z.object({
 export const foremArticleListSchema = z.array(foremArticleSchema);
 
 export type ForemArticle = z.infer<typeof foremArticleSchema>;
+export type ForemUser = z.infer<typeof foremUserSchema>;

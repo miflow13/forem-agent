@@ -40,6 +40,36 @@ test("AgentDatabase preserves one metric snapshot per research run", () => {
   }
 });
 
+test("AgentDatabase keeps owner metric snapshots separate from public research", () => {
+  const directory = mkdtempSync(join(tmpdir(), "forem-agent-owner-"));
+  const databasePath = join(directory, "test.db");
+
+  try {
+    const database = new AgentDatabase(databasePath);
+
+    const publicRun = database.startResearchRun("test", {});
+    database.saveResearchArticles(publicRun, [article(5)]);
+    database.finishResearchRun(publicRun, 1);
+
+    const ownerRun = database.startOwnerRun("example");
+    database.saveOwnerArticles(ownerRun, [article(17)]);
+    database.finishOwnerRun(ownerRun, 1);
+
+    assert.equal(
+      database.listLatestResearchArticles()[0]?.publicReactionsCount,
+      5,
+    );
+    assert.equal(
+      database.listLatestOwnerArticles()[0]?.publicReactionsCount,
+      17,
+    );
+
+    database.close();
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 function article(reactions: number): ForemArticle {
   return {
     id: 101,

@@ -10,10 +10,10 @@ keeps control of thesis, direction, revision, and publication.
 
 ## V0.1 architecture
 
-- **Forem gateway** — public article/feed reads first; authenticated endpoints
-  are added behind a separate boundary.
-- **SQLite memory** — local research runs, article metadata, and per-run metric
-  snapshots.
+- **Forem gateway** — public article/feed reads first; authenticated author
+  endpoints use a separate authenticated boundary.
+- **SQLite memory** — local research runs, author-history runs, article
+  metadata, and append-only metric snapshots.
 - **Deterministic analysis** — metrics and opportunity scoring are inspectable
   before model interpretation is added.
 - **Provider-agnostic LLM boundary** — no provider is coupled to the core.
@@ -23,14 +23,19 @@ keeps control of thesis, direction, revision, and publication.
 
 ## Current implementation
 
-The first foundation slice includes:
+The foundation now includes:
 
 - typed environment/config validation
-- public Forem article reader
-- local SQLite schema with historical research snapshots
+- Forem V1 media-type handling
+- public Forem article reader that does not send the API key on public requests
+- authenticated author identity and published-history reads
+- local SQLite schema with separate public and owner metric snapshots
 - `init` command
 - `research` command for collecting recent/top article samples
 - `opportunities` command with transparent deterministic tag signals
+- `analyze <article-id-or-url>` with community and authenticated-author
+  baselines when available
+- tests and GitHub Actions CI
 
 ## Requirements
 
@@ -44,42 +49,42 @@ cp .env.example .env
 npm run dev -- init
 npm run dev -- research --pages 2 --per-page 30
 npm run dev -- opportunities
+npm run dev -- analyze https://dev.to/username/article-slug
 ```
 
 Research data is written to `.forem-agent/forem-agent.db` by default.
 
-### Research examples
+### Analyze examples
 
 ```bash
-# Recent DEV articles
-npm run dev -- research
+# Public comparison only when no API key is configured
+npm run dev -- analyze 123456
 
-# Narrow the feed by tag
-npm run dev -- research --tag typescript
+# With FOREM_API_KEY set, your own published post also gets an author baseline
+npm run dev -- analyze https://dev.to/username/article-slug
 
-# Include Forem's top-window query
-npm run dev -- research --top-days 7
+# Machine-readable evidence packet
+npm run dev -- analyze 123456 --format json
 ```
 
-### Opportunity signals
-
-```bash
-npm run dev -- opportunities --limit 15
-```
-
-The current signal score combines sample frequency, engagement, and freshness.
-It is intentionally labeled as a heuristic. It is **not** a Forem-provided
-metric and does not claim to predict whether an article will succeed.
+The current analysis uses only observable article metadata. Engagement is
+defined transparently as reactions + (comments × 2), then normalized by age
+with a one-day floor. Community cohorts come from the latest local research
+sample and are explicitly incomplete; no view counts, follower conversion,
+private competitor analytics, or success probabilities are inferred.
 
 ## Planned commands
 
-`analyze`, `plan`, `draft`, `revise`, and `push` will build on the
-research/storage foundation. `push` will only create or update unpublished
-drafts and will include remote timestamp conflict checks.
+`plan`, `draft`, `revise`, and `push` will build on the
+research/storage/analysis foundation. The next layer is evidence-bounded LLM
+interpretation: the model will receive derived evidence, not secrets, and will
+not be allowed to invent measurements. `push` will only create or update
+unpublished drafts and will include remote timestamp conflict checks.
 
 ## Security invariants
 
 - API keys stay in process environment variables.
+- Public Forem requests do not carry the API key.
 - API keys are never persisted to SQLite.
 - API keys are never sent to model context.
 - API keys are never written to generated files or logs.
