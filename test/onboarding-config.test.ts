@@ -9,6 +9,7 @@ import {
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import test from "node:test";
+import { loadConfig, loadProjectEnv } from "../src/config.js";
 import {
   saveModelSetup,
   upsertEnvValues,
@@ -84,6 +85,18 @@ test("saveModelSetup writes local config without logging or touching unrelated v
     if (process.platform !== "win32") {
       assert.equal(statSync(envPath).mode & 0o777, 0o600);
     }
+
+    delete process.env.MELDR_MODEL_PROVIDER;
+    delete process.env.MELDR_MODEL_API_KEY;
+    delete process.env.MELDR_MODEL;
+    delete process.env.MELDR_MODEL_BASE_URL;
+
+    assert.equal(loadProjectEnv(envPath), true);
+    const reloaded = loadConfig();
+    assert.equal(reloaded.modelProvider, "openai");
+    assert.equal(reloaded.modelApiKey, "secret-model-key");
+    assert.equal(reloaded.modelName, "gpt-5.6");
+    assert.equal(reloaded.modelBaseUrl, "https://api.openai.com/v1");
   } finally {
     restore("MELDR_MODEL_PROVIDER", previous.provider);
     restore("MELDR_MODEL_API_KEY", previous.apiKey);
