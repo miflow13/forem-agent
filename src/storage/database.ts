@@ -1,11 +1,25 @@
 import { DatabaseSync } from "node:sqlite";
 import type { ForemArticle } from "../forem/types.js";
 
+export type StoredResearchArticle = {
+  id: number;
+  title: string;
+  url: string;
+  username: string;
+  publishedTimestamp: string;
+  commentsCount: number;
+  publicReactionsCount: number;
+  positiveReactionsCount: number;
+  readingTimeMinutes: number;
+  tags: string[];
+};
+
 export class AgentDatabase {
   private readonly db: DatabaseSync;
 
   constructor(path: string) {
     this.db = new DatabaseSync(path);
+    this.db.exec("PRAGMA foreign_keys = ON;");
     this.db.exec("PRAGMA journal_mode = WAL;");
     this.migrate();
   }
@@ -42,11 +56,27 @@ export class AgentDatabase {
         captured_at TEXT NOT NULL
       );
 
+      CREATE TABLE IF NOT EXISTS article_snapshots (
+        run_id INTEGER NOT NULL,
+        article_id INTEGER NOT NULL,
+        comments_count INTEGER NOT NULL,
+        public_reactions_count INTEGER NOT NULL,
+        positive_reactions_count INTEGER NOT NULL,
+        reading_time_minutes REAL NOT NULL,
+        captured_at TEXT NOT NULL,
+        PRIMARY KEY (run_id, article_id),
+        FOREIGN KEY (run_id) REFERENCES research_runs(id) ON DELETE CASCADE,
+        FOREIGN KEY (article_id) REFERENCES articles(id) ON DELETE CASCADE
+      );
+
       CREATE INDEX IF NOT EXISTS idx_articles_published_timestamp
         ON articles(published_timestamp DESC);
 
       CREATE INDEX IF NOT EXISTS idx_articles_username
         ON articles(username);
+
+      CREATE INDEX IF NOT EXISTS idx_article_snapshots_article_id
+        ON article_snapshots(article_id);
     `);
   }
 
@@ -73,8 +103,8 @@ export class AgentDatabase {
     `).run(new Date().toISOString(), articleCount, runId);
   }
 
-  upsertArticles(articles: ForemArticle[]): void {
-    const statement = this.db.prepare(`
+  saveResearchArticles(runId: number, articles: ForemArticle[]): void {
+    const upsertArticle = this.db.prepare(`
       INSERT INTO articles (
         id,
         title,
@@ -107,11 +137,30 @@ export class AgentDatabase {
         captured_at = excluded.captured_at
     `);
 
+    const insertSnapshot = this.db.prepare(`
+      INSERT INTO article_snapshots (
+        run_id,
+        article_id,
+        comments_count,
+        public_reactions_count,
+        positive_reactions_count,
+        reading_time_minutes,
+        captured_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(run_id, article_id) DO UPDATE SET
+        comments_count = excluded.comments_count,
+        public_reactions_count = excluded.public_reactions_count,
+        positive_reactions_count = excluded.positive_reactions_count,
+        reading_time_minutes = excluded.reading_time_minutes,
+        captured_at = excluded.captured_at
+    `);
+
     this.db.exec("BEGIN");
     try {
       const capturedAt = new Date().toISOString();
+
       for (const article of articles) {
-        statement.run(
+        upsertArticle.run(
           article.id,
           article.title,
           article.description ?? null,
@@ -127,11 +176,61 @@ export class AgentDatabase {
           JSON.stringify(article.tag_list),
           capturedAt,
         );
+
+        insertSnapshot.run(
+          runId,
+          article.id,
+          article.comments_count,
+          article.public_reactions_count,
+          article.positive_reactions_count,
+          article.reading_time_minutes,
+          capturedAt,
+        );
       }
+
       this.db.exec("COMMIT");
     } catch (error) {
       this.db.exec("ROLLBACK");
       throw error;
     }
+  }
+
+  listLatestResearchArticles(): StoredResearchArticle[] {
+    const rows = this.db.prepare(`
+      SELECT
+        a.id,
+        a.title,
+        a.url,
+        a.username,
+        a.published_timestamp,
+        a.tag_list_json,
+        s.comments_count,
+        s.public_reactions_count,
+        s.positive_reactions_count,
+        s.reading_time_minutes
+      FROM article_snapshots s
+      JOIN articles a ON a.id = s.article_id
+      WHERE s.run_id = (
+        SELECT id
+        FROM research_runs
+        WHERE completed_at IS NOT NULL
+        ORDER BY id DESC
+        LIMIT 1
+      )
+      ORDER BY a.published_timestamp DESC
+    `).all() as Array<Record<string, unknown>>;
+
+    return rows.map((row) => ({
+      id: Number(row.id),
+      title: String(row.title),
+      url: String(row.url),
+      username: String(row.username),
+      publishedTimestamp: String(row.published_timestamp),
+      commentsCount: Number(row.comments_count),
+      publicReactionsCount: Number(row.public_reactions_count),
+      positiveReactionsCount: Number(row.positive_reactions_count),
+      readingTimeMinutes: Number(row.reading_time_minutes),
+      tags: JSON.parse(String(row.tag_list_json)) as string[],
+    }));
   }
 }

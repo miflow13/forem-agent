@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { Command, Option } from "commander";
 import { ensureHome, loadConfig } from "./config.js";
+import { runOpportunities } from "./commands/opportunities.js";
 import { runResearch } from "./commands/research.js";
 
 const program = new Command();
@@ -57,6 +58,35 @@ program
 
     console.log(
       `Research run #${result.runId} stored ${result.articleCount} unique articles in ${config.databasePath}`,
+    );
+  });
+
+program
+  .command("opportunities")
+  .description("Rank tag signals from the latest completed research run")
+  .addOption(
+    new Option("--limit <number>", "maximum tags to display")
+      .default(10)
+      .argParser(parsePositiveInt),
+  )
+  .action((options) => {
+    const config = loadConfig();
+    ensureHome(config);
+
+    const opportunities = runOpportunities(config, options.limit);
+
+    console.table(
+      opportunities.map((item) => ({
+        tag: item.tag,
+        articles: item.articleCount,
+        avg_engagement: Math.round(item.averageEngagement * 10) / 10,
+        avg_age_hours: Math.round(item.averageAgeHours * 10) / 10,
+        signal_score: item.signalScore,
+      })),
+    );
+
+    console.log(
+      "Signal score is a transparent sample heuristic, not a prediction of article success.",
     );
   });
 

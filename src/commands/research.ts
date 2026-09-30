@@ -44,7 +44,7 @@ export async function runResearch(
     }
 
     const articles = [...seen.values()];
-    database.upsertArticles(articles);
+    database.saveResearchArticles(runId, articles);
     database.finishResearchRun(runId, articles.length);
 
     return { runId, articleCount: articles.length };
