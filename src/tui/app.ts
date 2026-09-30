@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { basename, resolve } from "node:path";
-import type { AppConfig } from "../config.js";
+import { modelStatusLabel, type AppConfig } from "../config.js";
 import { acceptRevision } from "../commands/accept.js";
 import { runAnalyze } from "../commands/analyze.js";
 import { runDraft } from "../commands/draft.js";
@@ -24,6 +24,10 @@ import {
   selectMenu,
 } from "./menu.js";
 import {
+  ensureFirstRunOnboarding,
+  runAiSettings,
+} from "./onboarding.js";
+import {
   bullet,
   divider,
   info,
@@ -41,6 +45,7 @@ type MainAction =
   | "research"
   | "opportunities"
   | "analyze"
+  | "settings"
   | "help"
   | "exit";
 
@@ -58,7 +63,12 @@ type ProjectAction =
   | "details"
   | "back";
 
-export async function runInteractive(config: AppConfig): Promise<void> {
+export async function runInteractive(initialConfig: AppConfig): Promise<void> {
+  const onboarded = await ensureFirstRunOnboarding(initialConfig);
+  if (!onboarded) return;
+
+  let config = onboarded;
+
   while (true) {
     const projects = listProjects(config);
     const recent = projects[0] ?? null;
@@ -71,6 +81,7 @@ export async function runInteractive(config: AppConfig): Promise<void> {
       subtitle: recent
         ? `Most recent: ${recent.project.title}`
         : "No editorial projects yet.",
+      status: modelStatusLabel(config),
       options: [
         ...(recent
           ? [
@@ -108,6 +119,11 @@ export async function runInteractive(config: AppConfig): Promise<void> {
           label: "Analyze a DEV article",
           value: "analyze",
           description: "Compare an article against your local research sample.",
+        },
+        {
+          label: "AI settings",
+          value: "settings",
+          description: "Change provider, model, or API key.",
         },
         {
           label: "Help",
@@ -154,6 +170,11 @@ export async function runInteractive(config: AppConfig): Promise<void> {
       continue;
     }
 
+    if (action === "settings") {
+      config = await runAiSettings(config);
+      continue;
+    }
+
     if (action === "help") {
       showHelp();
       await pause();
@@ -177,6 +198,7 @@ async function projectsScreen(config: AppConfig): Promise<void> {
     const chosen = await selectMenu<string>({
       title: "Projects",
       subtitle: "Choose an article. You never need to type its slug here.",
+      status: modelStatusLabel(config),
       options: projects.map((item) => ({
         label: item.project.title,
         value: item.project.slug,
@@ -213,6 +235,7 @@ async function projectScreen(
         project,
         claimReport !== null,
       )}`,
+      status: modelStatusLabel(config),
       options,
       canGoBack: true,
       hint: "↑/↓ navigate  Enter select  q back",
