@@ -1,7 +1,12 @@
 #!/usr/bin/env node
 import { basename } from "node:path";
 import { Command, Option } from "commander";
-import { ensureHome, loadConfig, loadProjectEnv } from "./config.js";
+import {
+  ensureHome,
+  loadConfig,
+  loadProjectEnv,
+  modelStatusLabel,
+} from "./config.js";
 import { acceptRevision } from "./commands/accept.js";
 import { runAnalyze } from "./commands/analyze.js";
 import { runDraft } from "./commands/draft.js";
@@ -201,12 +206,12 @@ program
       const model = createConfiguredModel(config);
       if (!model) {
         throw new Error(
-          "Model interpretation requires OPENAI_API_KEY. Deterministic analysis does not.",
+          "Model interpretation requires a configured AI provider. Run meldr and complete AI setup. Deterministic analysis does not.",
         );
       }
 
       if (options.format !== "json") {
-        info(`Interpreting evidence with ${config.openaiModel}…`);
+        info(`Interpreting evidence with ${modelStatusLabel(config)}…`);
       }
 
       interpreted = await interpretArticleAnalysis(
@@ -314,7 +319,7 @@ program
     const config = loadConfig();
     ensureHome(config);
 
-    info(`Building an evidence-bounded brief with ${config.openaiModel}…`);
+    info(`Building an evidence-bounded brief with ${modelStatusLabel(config)}…`);
     const result = await runPlan(config, idea);
 
     success("Editorial brief created");
@@ -394,7 +399,7 @@ program
     if (pass === "claim-check") {
       info("Reviewing the draft for claims that still need source verification…");
     } else {
-      info(`Running ${pass} revision pass with ${config.openaiModel}…`);
+      info(`Running ${pass} revision pass with ${modelStatusLabel(config)}…`);
     }
 
     const result = await runRevision(config, project, pass);
@@ -567,10 +572,13 @@ if (process.argv.length <= 2) {
     console.error("");
     fail(message);
 
-    if (message.includes("OPENAI_API_KEY")) {
+    if (
+      message.includes("configured AI provider") ||
+      message.includes("No AI provider is configured")
+    ) {
       console.error(
         style.dim(
-          "Add OPENAI_API_KEY to .env (not .env.example), then retry.",
+          "Run meldr with no arguments to choose OpenAI, Claude, or a compatible custom provider.",
         ),
       );
     }
