@@ -16,8 +16,10 @@ test("plan writes a proposed Markdown brief and requires explicit approval", asy
     homeDir: root,
     databasePath: join(root, "forem-agent.db"),
     workspaceDir: join(root, "articles"),
-    openaiModel: "fake-model",
-    openaiBaseUrl: "https://api.openai.com/v1",
+    modelProvider: "openai",
+    modelApiKey: "fake-key",
+    modelName: "fake-model",
+    modelBaseUrl: "https://api.openai.com/v1",
   };
 
   try {

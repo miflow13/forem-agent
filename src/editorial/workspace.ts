@@ -186,7 +186,7 @@ export function renderBriefMarkdown(
     "",
     ...bullets(brief.risks_and_counterarguments),
     "",
-    "> Status is **proposed** until the author explicitly approves this brief.",
+    "> Edit this file directly. Drafting is enabled only after explicit approval.",
     "",
   );
 

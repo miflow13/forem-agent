@@ -33,7 +33,7 @@ export async function runPlan(
   const model = injectedModel ?? createConfiguredModel(config);
   if (!model) {
     throw new Error(
-      "Planning requires a configured model. Set OPENAI_API_KEY or inject a StructuredTextModel.",
+      "Planning requires a configured AI provider. Run meldr and complete AI setup, or inject a StructuredTextModel.",
     );
   }
 

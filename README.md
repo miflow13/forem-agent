@@ -41,7 +41,18 @@ revision, approval, and publication.
 - optional `analyze --interpret` structured model interpretation
 - `plan <idea>` or `plan tag:<tag>` to create an editable proposed brief
 - `approve <project-id-or-slug>` as the explicit planning approval gate
+- `draft <project-id-or-slug>` for section-by-section generation from the current approved `brief.md`
+- draft creation writes an immutable `draft.md` article snapshot plus separate `editorial-notes.md`
+- first-run onboarding that explains meldr before asking the writer to choose an AI provider
+- OpenAI, Claude/Anthropic, and custom OpenAI-Responses-compatible provider setup
+- masked API-key entry, local gitignored `.env` persistence, and a small connection check before entering the app
+- beginner-friendly interactive terminal UI with arrow-key navigation, AI/model status, obvious recommended next steps, inline revision acceptance, file previews, and editor launching
+- in-app **AI settings** for changing provider, model, or API key later
+- polished scripted CLI with progress output, concise errors, `projects`/`status` navigation, and `NO_COLOR` support
+- non-destructive `revise` passes for structure, voice, and claim review
+- explicit `accept` promotion into `working.md`, with stale-revision protection and revision chaining
 - OpenAI Responses adapter with strict JSON output and response storage disabled
+- Anthropic Messages adapter using schema-constrained tool output
 - fake model adapter for deterministic tests
 - GitHub Actions CI
 
@@ -53,14 +64,92 @@ Node.js 22.5+ (the project uses Node's built-in `node:sqlite` module).
 
 ```bash
 npm install
-cp .env.example .env
 npm run dev -- init
-npm run dev -- research --pages 2 --per-page 30
-npm run dev -- opportunities
+npm run dev
 ```
+
+The first interactive launch introduces the workflow and asks which AI meldr
+should use:
+
+```text
+Welcome to meldr
+      ↓
+Choose OpenAI / Claude / compatible custom provider
+      ↓
+Choose a model
+      ↓
+Enter API key with masked input
+      ↓
+Connection check
+      ↓
+Main meldr workspace
+```
+
+For local development, `npm run dev` opens the TUI. Once built and linked:
+
+```bash
+npm run build
+npm link
+meldr
+```
+
+You can rerun provider setup at any time with `meldr setup` or choose
+**AI settings** inside the TUI. The old `forem-agent` executable remains as a
+compatibility alias.
 
 Local state is written to `.forem-agent/forem-agent.db`. Editable article
 projects are written to `./articles` unless `FOREM_AGENT_WORKSPACE` is set.
+The generated `.env` is local and gitignored. On filesystems that support
+POSIX permissions, meldr restricts it to mode `0600`.
+
+## AI providers
+
+The guided setup currently supports:
+
+- **OpenAI** through the Responses API. The default model is `gpt-5.6`.
+- **Claude** through Anthropic's Messages API. The default model is
+  `claude-sonnet-5`.
+- **Custom OpenAI-compatible** endpoints that implement the Responses API.
+
+Advanced users can skip the wizard and configure `.env` manually. The
+provider-neutral variables are:
+
+```bash
+MELDR_MODEL_PROVIDER=openai
+MELDR_MODEL_API_KEY=...
+MELDR_MODEL=gpt-5.6
+MELDR_MODEL_BASE_URL=https://api.openai.com/v1
+```
+
+Existing `OPENAI_API_KEY` / `OPENAI_MODEL` and
+`ANTHROPIC_API_KEY` / `ANTHROPIC_MODEL` setups are still recognized when an
+explicit `MELDR_MODEL_PROVIDER` is not configured. Process environment
+variables keep precedence over values loaded from `.env`.
+
+## Interactive mode
+
+Running `meldr` with no arguments opens the beginner-friendly terminal UI.
+You do not need to remember slugs, revision filenames, provider environment
+variables, or long command flags.
+
+The header shows the active AI provider/model, and project screens put the
+recommended next action first.
+
+The main screen lets you:
+
+- continue the most recent article by title
+- browse all projects and their current workflow state
+- start a new article from a plain-English idea
+- refresh the local DEV research sample
+- explore deterministic tag opportunities
+- analyze a DEV article
+- change AI provider/model/key without editing configuration files
+- open the current brief/article in `$VISUAL`, `$EDITOR`, or VS Code
+- run structure, voice, and claim reviews
+- accept structure/voice proposals without copying timestamped filenames
+
+Arrow keys move, Enter chooses, and `q` goes back or exits. The TUI uses the
+same underlying commands and safety invariants as the scripted CLI.
 
 ## Analysis
 
@@ -117,21 +206,110 @@ npm run dev -- approve <project-id-or-slug>
 ```
 
 Approval changes both the local project record and `brief.md` to
-`status: approved`. Future `draft` work will refuse unapproved projects.
+`status: approved`.
+
+## Drafting workflow
+
+Drafting reads the current `brief.md` from disk, so edits made after planning
+and before drafting remain authoritative.
+
+```bash
+npm run dev -- draft <project-id-or-slug>
+```
+
+The model is called once per outline section rather than generating the whole
+article in one pass. The result is written to:
+
+```text
+articles/
+└── <project-slug>/
+    ├── brief.md
+    ├── draft.md
+    └── editorial-notes.md
+```
+
+`draft.md` is the immutable first-generation article snapshot.
+Personal-experience placeholders and claims-to-verify live in
+`editorial-notes.md`, not in the publishable article body. Meldr refuses to
+overwrite either file during draft creation. Existing legacy drafts that still
+contain those note sections are migrated non-destructively the next time a
+revision runs.
+
+## Revision workflow
+
+Revisions are deliberately non-destructive. The first pass reads `draft.md`.
+After you accept a structure or voice proposal, future passes automatically
+read `working.md` instead. This makes accepted human decisions the source for
+the next model pass.
+
+```bash
+# Tighten pacing, transitions, repetition, and article-level structure
+npm run dev -- revise <project-id-or-slug> --pass structure
+
+# Promote the reviewed proposal into working.md
+npm run dev -- accept <project-id-or-slug> <revision-file>
+
+# The next pass now reads working.md
+npm run dev -- revise <project-id-or-slug> --pass voice
+
+# Promote that proposal too
+npm run dev -- accept <project-id-or-slug> <revision-file>
+
+# Identify factual and technical claims that still need source verification
+npm run dev -- revise <project-id-or-slug> --pass claim-check
+```
+
+The workspace becomes:
+
+```text
+articles/
+└── <project-slug>/
+    ├── brief.md
+    ├── draft.md
+    ├── working.md
+    ├── editorial-notes.md
+    └── revisions/
+        ├── ...-structure.md
+        ├── ...-voice.md
+        └── ...-claim-check.md
+```
+
+`draft.md` is never changed by revision acceptance. `working.md` is the
+current human-approved article state and may be edited directly. Each proposal
+records the exact source file and SHA-256 digest it reviewed; `accept` refuses
+a stale proposal if that source changed afterward.
+
+Structure and voice proposals can be accepted. Claim-check reports cannot:
+they are verification checklists, not article rewrites. Claim-check does not
+invent sources or claim that a statement was independently verified.
+
+## Navigation
+
+```bash
+meldr projects
+meldr status <project-id-or-slug>
+```
+
+`projects` (alias `ls`) lists project stages and files. `status` (alias
+`show`) reports the current stage and suggests the next workflow command.
+Long model operations print progress, and expected user errors are concise by
+default. Set `MELDR_DEBUG=1` for full stack traces and `NO_COLOR=1` to
+disable ANSI styling.
 
 ## Planned commands
 
-`draft`, `revise`, and `push` are next. Drafting will work section by
-section from an approved brief and preserve human edits. `push` will only
-create or update unpublished Forem drafts and will include remote timestamp
-conflict checks.
+`push` is next. It will only create or update unpublished Forem drafts and
+will include remote timestamp conflict checks.
 
 ## Security invariants
 
-- Forem and model API keys stay in process environment variables.
+- Forem and model API keys stay in process memory and the local gitignored `.env` configuration file.
+- Interactive API-key entry is masked.
+- The onboarding connection check never places the API key in the prompt body.
 - Public Forem requests do not carry the Forem API key.
 - API keys are never persisted to SQLite.
 - API keys are never sent to model context.
-- API keys are never written to generated files or logs.
-- Model response persistence is disabled in the OpenAI adapter.
+- API keys are never written to briefs, drafts, revision files, or logs.
+- OpenAI response persistence is disabled in the OpenAI adapter.
+- Claude structured output uses the Anthropic Messages tool boundary; credentials stay in request headers.
 - No command may publish an article directly.
