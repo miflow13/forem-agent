@@ -13,7 +13,7 @@ export const foremUserSchema = z.object({
   profile_image_90: z.string().nullable().optional(),
 });
 
-export const foremArticleSchema = z.object({
+const foremArticleWireSchema = z.object({
   type_of: z.string().optional(),
   id: z.number().int(),
   title: z.string(),
@@ -36,10 +36,40 @@ export const foremArticleSchema = z.object({
   published_at: z.string().optional(),
   last_comment_at: z.string().optional(),
   reading_time_minutes: z.number().nonnegative().default(0),
-  tag_list: z.array(z.string()).default([]),
-  tags: z.string().optional(),
+  tag_list: z.union([z.array(z.string()), z.string()]).default([]),
+  tags: z.union([z.string(), z.array(z.string())]).optional(),
   user: foremUserSchema,
 });
+
+function splitTags(value: string): string[] {
+  return value
+    .split(",")
+    .map((tag) => tag.trim())
+    .filter(Boolean);
+}
+
+export const foremArticleSchema = foremArticleWireSchema.transform(
+  ({ tag_list: tagList, tags, ...article }) => {
+    const normalizedTagList = Array.isArray(tagList)
+      ? tagList
+      : Array.isArray(tags)
+        ? tags
+        : splitTags(tags ?? tagList);
+
+    const normalizedTags =
+      typeof tags === "string"
+        ? tags
+        : normalizedTagList.length > 0
+          ? normalizedTagList.join(", ")
+          : undefined;
+
+    return {
+      ...article,
+      tag_list: normalizedTagList,
+      tags: normalizedTags,
+    };
+  },
+);
 
 export const foremArticleListSchema = z.array(foremArticleSchema);
 
