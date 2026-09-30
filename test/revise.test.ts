@@ -140,6 +140,41 @@ test("revision requires an existing draft", async () => {
   }
 });
 
+test("revision reviews a human-owned working article without draft.md", async () => {
+  const fixture = createFixture();
+
+  try {
+    rmSync(fixture.draftPath);
+    const workingPath = join(fixture.workspacePath, "working.md");
+    writeFileSync(
+      workingPath,
+      "# Human article\n\nThe author's original prose.\n",
+      "utf8",
+    );
+    const database = new AgentDatabase(fixture.config.databasePath);
+    database.setEditorialProjectWritingMode(fixture.slug, "human");
+    database.close();
+
+    const model = new FakeStructuredTextModel({
+      summary: "The structure is clear.",
+      changes: [],
+      revised_markdown: "# Human article\n\nThe author's original prose.\n",
+    });
+    const result = await runRevision(
+      fixture.config,
+      fixture.slug,
+      "structure",
+      model,
+    );
+
+    assert.equal(result.sourceArticle, "working.md");
+    assert.equal(readFileSync(workingPath, "utf8"), "# Human article\n\nThe author's original prose.\n");
+    assert.match(readFileSync(result.outputPath, "utf8"), /source_article: working\.md/);
+  } finally {
+    fixture.cleanup();
+  }
+});
+
 function createFixture() {
   const root = mkdtempSync(join(tmpdir(), "forem-agent-revise-"));
   const workspaceRoot = join(root, "articles");

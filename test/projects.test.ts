@@ -6,6 +6,11 @@ import test from "node:test";
 import type { AppConfig } from "../src/config.js";
 import { getProjectStatus, listProjects } from "../src/commands/projects.js";
 import { AgentDatabase } from "../src/storage/database.js";
+import {
+  friendlyNextStep,
+  projectActions,
+  writingModeMenuOptions,
+} from "../src/tui/app.js";
 
 test("projects navigation reflects draft and accepted working states", () => {
   const root = mkdtempSync(join(tmpdir(), "forem-agent-projects-"));
@@ -111,10 +116,29 @@ test("projects navigation reflects draft and accepted working states", () => {
       workspacePath: humanPath,
     });
 
+    const sectionPath = join(config.workspaceDir, "section-project");
+    mkdirSync(sectionPath, { recursive: true });
+    writeFileSync(join(sectionPath, "brief.md"), "status: approved\n");
+    writeFileSync(join(sectionPath, "working.md"), "# Section draft\n");
+
+    database.createEditorialProject({
+      id: "section-id",
+      slug: "section-project",
+      title: "Section Project",
+      thesis: "Thesis",
+      audience: "Readers",
+      status: "approved",
+      workspacePath: sectionPath,
+    });
+    database.setEditorialProjectWritingMode(
+      "section-project",
+      "section_assisted",
+    );
+
     database.close();
 
     const projects = listProjects(config);
-    assert.equal(projects.length, 5);
+    assert.equal(projects.length, 6);
 
     const proposed = getProjectStatus(config, "proposed-project");
     assert.equal(proposed.stage, "proposed");
@@ -124,6 +148,12 @@ test("projects navigation reflects draft and accepted working states", () => {
     assert.equal(approved.stage, "approved");
     assert.equal(approved.writingMode, null);
     assert.equal(approved.nextAction, "meldr mode approved-project");
+    assert.equal(friendlyNextStep(approved), "Choose writing mode");
+    assert.deepEqual(projectActions(approved, false, false)[0], {
+      label: "Next · Choose writing mode",
+      value: "choose-mode",
+      description: "Decide how much writing help you want for this project.",
+    });
 
     const drafted = getProjectStatus(config, "drafted-project");
     assert.equal(drafted.stage, "draft");
@@ -143,6 +173,26 @@ test("projects navigation reflects draft and accepted working states", () => {
     assert.equal(human.stage, "working");
     assert.equal(human.writingMode, "human");
     assert.match(human.nextAction, /revise human-project --pass structure/);
+    assert.equal(
+      projectActions(human, false, false)[0]?.value,
+      "structure",
+    );
+
+    const sectionProject = getProjectStatus(config, "section-project");
+    assert.equal(sectionProject.writingMode, "section_assisted");
+    assert.match(sectionProject.nextAction, /meldr section section-project/);
+    assert.equal(
+      projectActions(sectionProject, false, false)[0]?.value,
+      "section-assist",
+    );
+
+    const modeOptions = writingModeMenuOptions();
+    assert.equal(modeOptions[0]?.value, "human");
+    assert.match(modeOptions[0]?.label ?? "", /recommended/i);
+    assert.deepEqual(
+      modeOptions.map((option) => option.value),
+      ["human", "section_assisted", "ai_first_draft"],
+    );
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

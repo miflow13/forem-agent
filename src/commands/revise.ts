@@ -63,9 +63,9 @@ export async function runRevision(
     if (!existsSync(briefPath)) {
       throw new Error(`Project brief is missing: ${briefPath}`);
     }
-    if (!existsSync(draftPath)) {
+    if (!existsSync(draftPath) && !existsSync(workingPath)) {
       throw new Error(
-        `Project has no draft yet: ${draftPath}. Draft it before running revisions.`,
+        `Project has no draft yet and no working article: ${project.workspacePath}. Write or draft the article before running revisions.`,
       );
     }
 

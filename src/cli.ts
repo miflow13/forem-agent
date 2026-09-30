@@ -15,8 +15,21 @@ import { approvePlan, runPlan } from "./commands/plan.js";
 import { getProjectStatus, listProjects } from "./commands/projects.js";
 import { runResearch } from "./commands/research.js";
 import { runRevision } from "./commands/revise.js";
+import {
+  acceptSectionAssistance,
+  runSectionAssistance,
+} from "./commands/section-assist.js";
+import { selectWritingMode } from "./commands/writing-mode.js";
 import { interpretArticleAnalysis } from "./editorial/interpreter.js";
 import { revisionPasses } from "./editorial/reviser.js";
+import {
+  sectionAssistanceTypes,
+  type SectionAssistanceType,
+} from "./editorial/drafter.js";
+import {
+  writingModes,
+  type WritingMode,
+} from "./storage/database.js";
 import { createConfiguredModel } from "./providers/configured-model.js";
 import { runInteractive } from "./tui/app.js";
 import { runAiSettings } from "./tui/onboarding.js";
@@ -51,7 +64,9 @@ program
     [
       "",
       "Workflow:",
-      "  research → opportunities → plan → approve → draft → revise → accept",
+      "  research → opportunities → plan → approve → choose writing mode → review",
+      "",
+      "Meldr is an editor before it is a writer. Full-article generation requires explicit AI-first opt-in.",
       "",
       "Navigation:",
       "  meldr projects              list editorial projects",
@@ -347,12 +362,67 @@ program
     keyValue("Workspace", approved.workspacePath);
 
     section("Next");
-    info(command(`meldr draft ${approved.slug}`));
+    info(command(`meldr mode ${approved.slug}`));
+  });
+
+program
+  .command("mode <project> [mode]")
+  .description("Choose how this project will be written")
+  .option(
+    "--confirm-ai-draft",
+    "confirm that an AI first draft is a starting point, not publish-ready prose",
+  )
+  .action((project, mode, options) => {
+    const config = loadConfig();
+    ensureHome(config);
+
+    if (!mode) {
+      section("Choose writing mode");
+      info(`${command(`meldr mode ${project} human`)}  ${style.dim("recommended")}`);
+      info(command(`meldr mode ${project} section_assisted`));
+      info(
+        command(
+          `meldr mode ${project} ai_first_draft --confirm-ai-draft`,
+        ),
+      );
+      console.log("");
+      console.log(
+        style.dim(
+          "Human mode creates working.md for your prose. AI first draft never becomes a future default.",
+        ),
+      );
+      return;
+    }
+
+    if (!(writingModes as readonly string[]).includes(mode)) {
+      throw new Error(
+        `Unknown writing mode: ${mode}. Choose ${writingModes.join(", ")}.`,
+      );
+    }
+
+    const writingMode = mode as WritingMode;
+    const result = selectWritingMode(config, project, writingMode, {
+      confirmAiFirstDraft: Boolean(options.confirmAiDraft),
+    });
+    success(`Writing mode selected · ${writingMode}`);
+    if (result.workingPath) keyValue("Working", result.workingPath);
+
+    section("Next");
+    if (writingMode === "ai_first_draft") {
+      info(command(`meldr draft ${result.slug}`));
+    } else if (writingMode === "section_assisted") {
+      info(command(`meldr section ${result.slug} 1 --assist talking_points`));
+    } else {
+      info(`Write in ${result.workingPath}, then review it:`);
+      console.log(
+        `  ${command(`meldr revise ${result.slug} --pass structure`)}`,
+      );
+    }
   });
 
 program
   .command("draft <project>")
-  .description("Generate draft.md section-by-section from an approved brief")
+  .description("Generate immutable draft.md after explicit AI-first mode selection")
   .action(async (project) => {
     const config = loadConfig();
     ensureHome(config);
@@ -386,8 +456,50 @@ program
   });
 
 program
+  .command("section <project> <number>")
+  .description("Request explicit assistance for one approved outline section")
+  .addOption(
+    new Option("--assist <type>", "section help type")
+      .choices([...sectionAssistanceTypes])
+      .makeOptionMandatory(),
+  )
+  .action(async (project, number, options) => {
+    const config = loadConfig();
+    ensureHome(config);
+    const sectionNumber = parsePositiveInt(number);
+    const assistanceType = options.assist as SectionAssistanceType;
+    const result = await runSectionAssistance(
+      config,
+      project,
+      sectionNumber,
+      assistanceType,
+    );
+
+    success(`Section proposal created · ${result.sectionHeading}`);
+    keyValue("Type", assistanceType);
+    keyValue("Proposal", result.proposalPath);
+    section("Review and accept");
+    info(
+      command(
+        `meldr section-accept ${result.slug} ${basename(result.proposalPath)}`,
+      ),
+    );
+  });
+
+program
+  .command("section-accept <project> <proposal>")
+  .description("Append a reviewed, still-current section proposal to working.md")
+  .action((project, proposal) => {
+    const config = loadConfig();
+    ensureHome(config);
+    const result = acceptSectionAssistance(config, project, proposal);
+    success(`Accepted section · ${result.sectionHeading}`);
+    keyValue("Working", result.workingPath);
+  });
+
+program
   .command("revise <project>")
-  .description("Create a non-destructive revision proposal for an existing draft")
+  .description("Create a non-destructive review proposal for the current article")
   .addOption(
     new Option("--pass <pass>", "revision pass")
       .choices([...revisionPasses])
@@ -399,7 +511,7 @@ program
 
     const pass = options.pass as (typeof revisionPasses)[number];
     if (pass === "claim-check") {
-      info("Reviewing the draft for claims that still need source verification…");
+      info("Reviewing the article for claims that still need source verification…");
     } else {
       info(`Running ${pass} revision pass with ${modelStatusLabel(config)}…`);
     }
@@ -522,6 +634,7 @@ program
     console.log(style.bold(item.project.title));
     keyValue("Slug", item.project.slug);
     keyValue("Stage", statusLabel(item.stage));
+    keyValue("Writing mode", item.writingMode ?? "not chosen");
     keyValue("Brief", item.hasBrief ? item.briefPath : "missing");
     keyValue("Draft", item.hasDraft ? item.draftPath : "not created");
     keyValue("Working", item.hasWorking ? item.workingPath : "not accepted yet");

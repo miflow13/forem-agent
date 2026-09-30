@@ -28,6 +28,7 @@ export function selectWritingMode(
   config: AppConfig,
   reference: string,
   writingMode: WritingMode,
+  options: { confirmAiFirstDraft?: boolean } = {},
 ): WritingModeResult {
   const database = new AgentDatabase(config.databasePath);
 
@@ -65,6 +66,11 @@ export function selectWritingMode(
     }
 
     if (writingMode === "ai_first_draft") {
+      if (!options.confirmAiFirstDraft) {
+        throw new Error(
+          "AI first draft confirmation is required. The result is a starting point, not publish-ready prose.",
+        );
+      }
       database.setEditorialProjectWritingMode(reference, writingMode);
       return {
         projectId: project.id,

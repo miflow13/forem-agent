@@ -86,11 +86,18 @@ function summarizeProject(project: StoredEditorialProject): ProjectSummary {
   } else if (stage === "proposed") {
     nextAction = `meldr approve ${project.slug}`;
   } else if (stage === "approved") {
-    nextAction = `meldr mode ${project.slug}`;
+    nextAction =
+      writingMode === "ai_first_draft"
+        ? `meldr draft ${project.slug}`
+        : `meldr mode ${project.slug}`;
   } else if (stage === "draft") {
     nextAction = `meldr revise ${project.slug} --pass structure`;
   } else if (stage === "working") {
-    nextAction = nextWorkingAction(project.slug, acceptedPass);
+    nextAction = nextWorkingAction(
+      project.slug,
+      acceptedPass,
+      writingMode,
+    );
   } else {
     nextAction = "Inspect the project workspace before continuing.";
   }
@@ -139,7 +146,11 @@ function acceptedRevisionPass(
 function nextWorkingAction(
   slug: string,
   acceptedPass: "structure" | "voice" | null,
+  writingMode: WritingMode | null,
 ): string {
+  if (writingMode === "section_assisted" && acceptedPass === null) {
+    return `meldr section ${slug} 1 --assist talking_points`;
+  }
   if (acceptedPass === "structure") {
     return `meldr revise ${slug} --pass voice`;
   }

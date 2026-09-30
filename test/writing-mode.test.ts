@@ -76,10 +76,21 @@ test("AI-first mode is explicit project state and does not generate by selection
   const fixture = createFixture();
 
   try {
+    assert.throws(
+      () =>
+        selectWritingMode(
+          fixture.config,
+          fixture.slug,
+          "ai_first_draft",
+        ),
+      /confirmation is required/i,
+    );
+
     const result = selectWritingMode(
       fixture.config,
       fixture.slug,
       "ai_first_draft",
+      { confirmAiFirstDraft: true },
     );
 
     assert.equal(result.writingMode, "ai_first_draft");
