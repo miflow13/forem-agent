@@ -1,6 +1,5 @@
 # forem-agent
-meldr
-
+<img width="2172" height="724" alt="ChatGPT Image Sep 30, 2026, 12_30_12 PM" src="https://github.com/user-attachments/assets/24cbc906-aca7-4e55-ab10-6468eb43982f" />
 A local-first editorial intelligence CLI for Forem/DEV writers.
 
 The goal is not to auto-publish AI-written articles. The agent gathers public
