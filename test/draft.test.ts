@@ -32,7 +32,7 @@ test("draft rejects projects that have not been approved", async () => {
   }
 });
 
-test("draft reads edited approved brief, generates section-by-section, and never overwrites", async () => {
+test("draft writes publishable article and editorial notes separately", async () => {
   const fixture = createProjectFixture("approved");
 
   try {
@@ -64,12 +64,17 @@ test("draft reads edited approved brief, generates section-by-section, and never
     assert.match(draft, /## Start with the actual failure/);
     assert.match(draft, /## Explain the boundary/);
     assert.match(draft, /Generated body from the approved brief/);
+    assert.doesNotMatch(draft, /Author notes to complete/);
+    assert.doesNotMatch(draft, /Claims to verify before publishing/);
+
+    const notes = readFileSync(result.editorialNotesPath, "utf8");
+    assert.match(notes, /# Editorial Notes/);
     assert.match(
-      draft,
+      notes,
       /Author: add the real story about debugging the first failed API call\./,
     );
     assert.match(
-      draft,
+      notes,
       /Verify the exact API behavior against primary documentation\./,
     );
 
@@ -82,6 +87,11 @@ test("draft reads edited approved brief, generates section-by-section, and never
       readFileSync(result.draftPath, "utf8"),
       draft,
       "existing draft must remain byte-for-byte unchanged",
+    );
+    assert.equal(
+      readFileSync(result.editorialNotesPath, "utf8"),
+      notes,
+      "existing editorial notes must remain byte-for-byte unchanged",
     );
   } finally {
     fixture.cleanup();
