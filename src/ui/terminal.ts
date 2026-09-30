@@ -39,6 +39,10 @@ export function warn(message: string): void {
   console.log(`${style.yellow("!")} ${message}`);
 }
 
+export function fail(message: string): void {
+  console.error(`${style.red("✗")} ${message}`);
+}
+
 export function keyValue(label: string, value: string | number): void {
   console.log(`${style.dim(label.padEnd(13))} ${value}`);
 }
