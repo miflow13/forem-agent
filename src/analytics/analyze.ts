@@ -79,7 +79,7 @@ export function analyzeArticle(
     );
   }
 
-  if (ownerArticles === null) {
+  if (ownerCohort === null) {
     limitations.push(
       "Owner baseline is unavailable because the article is not identified as the authenticated author's post or authenticated history is unavailable.",
     );
