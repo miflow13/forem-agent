@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { stripFrontmatter } from "./article-files.js";
 import type { StructuredTextModel } from "../providers/structured-text-model.js";
 
 export const revisionPasses = ["structure", "voice", "claim-check"] as const;
@@ -34,6 +35,13 @@ const claimReviewSchema = z.object({
 
 export type RewriteRevision = z.infer<typeof rewriteSchema>;
 export type ClaimReview = z.infer<typeof claimReviewSchema>;
+
+export type ParsedRevisionProposal = {
+  pass: Exclude<RevisionPass, "claim-check">;
+  sourceArticle: string;
+  sourceSha256: string | null;
+  proposedArticle: string;
+};
 
 const REWRITE_JSON_SCHEMA = {
   type: "object",
@@ -96,7 +104,8 @@ export async function runRevisionPass(
   pass: RevisionPass,
   input: {
     briefMarkdown: string;
-    draftMarkdown: string;
+    articleMarkdown: string;
+    editorialNotesMarkdown: string | null;
   },
 ): Promise<
   | { kind: "rewrite"; data: RewriteRevision; model: string }
@@ -113,13 +122,14 @@ export async function runRevisionPass(
         "Do not pretend to verify a claim. You have no independent browsing or source-retrieval step in this pass.",
         "Do not invent citations, URLs, studies, benchmarks, standards, or vendor behavior.",
         "Prefer primary documentation, standards, source code, or original research as suggested source types where appropriate.",
-        "Ignore clearly labeled author placeholders and purely subjective statements.",
+        "Use the separate editorial notes as unresolved author context, not as published article content.",
         "Risk means editorial risk if the claim is wrong or overstated, not a probability that it is wrong.",
       ].join("\n"),
       input: JSON.stringify({
-        evidence_type: "draft_claim_review_v1",
+        evidence_type: "article_claim_review_v2",
         approved_brief_markdown: input.briefMarkdown,
-        current_draft_markdown: input.draftMarkdown,
+        current_article_markdown: stripFrontmatter(input.articleMarkdown),
+        editorial_notes_markdown: input.editorialNotesMarkdown,
       }),
     });
 
@@ -154,14 +164,16 @@ export async function runRevisionPass(
       ...passInstructions,
       "Return a complete revised Markdown article body plus a concise change report.",
       "Do not add new factual claims, measurements, citations, quotations, personal experiences, or verification results.",
-      "Preserve explicit author notes and unresolved claims instead of silently resolving them.",
-      "The approved brief defines the intended thesis and scope, but the current draft is the source of truth for human edits.",
+      "Editorial notes are separate internal context. Do not append them to revised_markdown or turn them into publishable sections.",
+      "Do not silently resolve author placeholders or verification work from editorial notes.",
+      "The approved brief defines the intended thesis and scope, but the current article is the source of truth for human edits.",
       "Do not include YAML frontmatter in revised_markdown.",
     ].join("\n"),
     input: JSON.stringify({
-      evidence_type: `draft_${pass}_revision_v1`,
+      evidence_type: `article_${pass}_revision_v2`,
       approved_brief_markdown: input.briefMarkdown,
-      current_draft_markdown: stripFrontmatter(input.draftMarkdown),
+      current_article_markdown: stripFrontmatter(input.articleMarkdown),
+      editorial_notes_markdown: input.editorialNotesMarkdown,
     }),
   });
 
@@ -174,21 +186,23 @@ export async function runRevisionPass(
 
 export function renderRewriteProposal(input: {
   pass: Exclude<RevisionPass, "claim-check">;
-  sourceDraft: string;
+  sourceArticle: string;
+  sourceSha256: string;
   model: string;
   revision: RewriteRevision;
 }): string {
   const lines = [
     "---",
     `revision_pass: ${input.pass}`,
-    `source_draft: ${input.sourceDraft}`,
+    `source_article: ${input.sourceArticle}`,
+    `source_sha256: ${input.sourceSha256}`,
     `model: ${input.model}`,
     `created_at: ${new Date().toISOString()}`,
     "---",
     "",
     `# ${titleCase(input.pass)} revision proposal`,
     "",
-    "> This is a non-destructive proposal. The original draft.md was not changed.",
+    "> This is a non-destructive proposal. The source article was not changed.",
     "",
     "## Summary",
     "",
@@ -224,14 +238,16 @@ export function renderRewriteProposal(input: {
 }
 
 export function renderClaimReview(input: {
-  sourceDraft: string;
+  sourceArticle: string;
+  sourceSha256: string;
   model: string;
   review: ClaimReview;
 }): string {
   const lines = [
     "---",
     "revision_pass: claim-check",
-    `source_draft: ${input.sourceDraft}`,
+    `source_article: ${input.sourceArticle}`,
+    `source_sha256: ${input.sourceSha256}`,
     `model: ${input.model}`,
     `created_at: ${new Date().toISOString()}`,
     "---",
@@ -266,16 +282,77 @@ export function renderClaimReview(input: {
   return lines.join("\n");
 }
 
-function stripFrontmatter(markdown: string): string {
+export function parseRevisionProposal(
+  markdown: string,
+): ParsedRevisionProposal {
   const lines = markdown.split(/\r?\n/);
-  if (lines[0]?.trim() !== "---") return markdown;
+  const frontmatter = parseFrontmatter(lines);
+  const rawPass = frontmatter.revision_pass;
 
-  const closing = lines.findIndex(
-    (line, index) => index > 0 && line.trim() === "---",
-  );
-  if (closing < 0) return markdown;
+  if (rawPass === "claim-check") {
+    throw new Error(
+      "Claim-check reports cannot be accepted as article revisions.",
+    );
+  }
+  if (rawPass !== "structure" && rawPass !== "voice") {
+    throw new Error("Revision proposal has an unknown or missing revision_pass.");
+  }
 
-  return lines.slice(closing + 1).join("\n").trimStart();
+  const sourceArticle =
+    frontmatter.source_article ??
+    frontmatter.source_draft ??
+    "draft.md";
+
+  const proposedArticle = extractSection(markdown, "Proposed article");
+  if (!proposedArticle.trim()) {
+    throw new Error("Revision proposal has no Proposed article section.");
+  }
+
+  return {
+    pass: rawPass,
+    sourceArticle,
+    sourceSha256: frontmatter.source_sha256 ?? null,
+    proposedArticle: proposedArticle.trim() + "\n",
+  };
+}
+
+function parseFrontmatter(lines: string[]): Record<string, string> {
+  if (lines[0]?.trim() !== "---") return {};
+
+  const result: Record<string, string> = {};
+  for (let index = 1; index < lines.length; index += 1) {
+    const line = lines[index] ?? "";
+    if (line.trim() === "---") break;
+
+    const match = line.match(/^([A-Za-z0-9_-]+):\s*(.*)$/);
+    if (!match) continue;
+
+    const key = match[1];
+    let value = match[2]?.trim() ?? "";
+    if (
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1);
+    }
+    result[key] = value;
+  }
+  return result;
+}
+
+function extractSection(markdown: string, heading: string): string {
+  const lines = markdown.split(/\r?\n/);
+  const marker = `## ${heading}`;
+  const start = lines.findIndex((line) => line.trim() === marker);
+  if (start < 0) return "";
+
+  const result: string[] = [];
+  for (let index = start + 1; index < lines.length; index += 1) {
+    const line = lines[index] ?? "";
+    if (/^##\s+/.test(line)) break;
+    result.push(line);
+  }
+  return result.join("\n").trim();
 }
 
 function titleCase(value: string): string {
