@@ -5,28 +5,28 @@ A local-first editorial intelligence CLI for Forem/DEV writers.
 
 The goal is not to auto-publish AI-written articles. The agent gathers public
 Forem signals, stores reproducible research locally, runs deterministic
-analysis, and can optionally ask a model to interpret a bounded evidence packet
-while the writer keeps control of thesis, direction, revision, and publication.
+analysis, and can optionally ask a model to interpret bounded evidence or build
+an editable editorial brief. The writer keeps control of thesis, direction,
+revision, approval, and publication.
 
 ## V0.1 architecture
 
 - **Forem gateway** — public article/feed reads first; authenticated author
   endpoints use a separate authenticated boundary.
 - **SQLite memory** — local research runs, author-history runs, article
-  metadata, and append-only metric snapshots.
+  metadata, project state, and append-only metric snapshots.
 - **Deterministic analysis** — metrics and opportunity scoring remain
   inspectable before model interpretation.
-- **Evidence-bounded model interpretation** — models receive derived evidence,
+- **Evidence-bounded model work** — models receive derived evidence,
   limitations, and provenance rather than credentials or hidden state.
-- **Provider boundary** — one OpenAI Responses adapter proves the interface;
-  a fake model supports deterministic tests.
-- **Markdown workspace** — plans and drafts remain ordinary files.
+- **Markdown workspace** — proposed briefs and future drafts live under
+  `./articles` by default and remain ordinary editable files.
+- **Human approval gate** — planning creates `status: proposed`; a separate
+  `approve` command is required to move a brief to `approved`.
 - **Draft-only publishing** — when added, remote writes must always use
   `published: false`; there will be no publish command.
 
 ## Current implementation
-
-The foundation now includes:
 
 - typed environment/config validation
 - Forem V1 media-type handling
@@ -35,10 +35,12 @@ The foundation now includes:
 - local SQLite schema with separate public and owner metric snapshots
 - `init` command
 - `research` command for collecting recent/top article samples
-- `opportunities` command with transparent deterministic tag signals
+- `opportunities` command with stable `tag:<tag>` references
 - `analyze <article-id-or-url>` with community and authenticated-author
   baselines when available
 - optional `analyze --interpret` structured model interpretation
+- `plan <idea>` or `plan tag:<tag>` to create an editable proposed brief
+- `approve <project-id-or-slug>` as the explicit planning approval gate
 - OpenAI Responses adapter with strict JSON output and response storage disabled
 - fake model adapter for deterministic tests
 - GitHub Actions CI
@@ -55,12 +57,12 @@ cp .env.example .env
 npm run dev -- init
 npm run dev -- research --pages 2 --per-page 30
 npm run dev -- opportunities
-npm run dev -- analyze https://dev.to/username/article-slug
 ```
 
-Research data is written to `.forem-agent/forem-agent.db` by default.
+Local state is written to `.forem-agent/forem-agent.db`. Editable article
+projects are written to `./articles` unless `FOREM_AGENT_WORKSPACE` is set.
 
-### Analyze examples
+## Analysis
 
 ```bash
 # Deterministic public comparison only
@@ -69,7 +71,7 @@ npm run dev -- analyze 123456
 # With FOREM_API_KEY set, your own published post also gets an author baseline
 npm run dev -- analyze https://dev.to/username/article-slug
 
-# After configuring the model environment variables:
+# Optional evidence-bounded model interpretation
 npm run dev -- analyze 123456 --interpret
 
 # Machine-readable evidence + interpretation packet
@@ -82,17 +84,47 @@ with a one-day floor. Community cohorts come from the latest local research
 sample and are explicitly incomplete; no view counts, follower conversion,
 private competitor analytics, or success probabilities are inferred.
 
-The model layer is deliberately downstream of deterministic analysis. It can
-explain observations, suggest clearly labeled hypotheses, and extract editorial
-lessons, but its schema and instructions prohibit inventing measurements or
-treating local heuristics as platform-provided facts.
+## Planning workflow
+
+Planning requires a completed research run and a configured model.
+
+```bash
+# Start from your own idea
+npm run dev -- plan "why local-first AI tools are easier to trust"
+
+# Or start from a tag opportunity shown by the opportunities command
+npm run dev -- plan tag:typescript
+```
+
+A successful plan creates:
+
+```text
+articles/
+└── <project-slug>/
+    └── brief.md
+```
+
+The brief includes the intended reader, problem, thesis, scope, evidence,
+competing angles, differentiation, outline, personal-experience placeholders,
+claims to verify, title options, up to four tags, and risks/counterarguments.
+It starts with `status: proposed`.
+
+Edit the Markdown directly. When the thesis and outline are yours and you are
+ready to draft:
+
+```bash
+npm run dev -- approve <project-id-or-slug>
+```
+
+Approval changes both the local project record and `brief.md` to
+`status: approved`. Future `draft` work will refuse unapproved projects.
 
 ## Planned commands
 
-`plan`, `draft`, `revise`, and `push` will build on the
-research/storage/analysis foundation. The next layer is the Markdown editorial
-workspace and `plan` approval workflow. `push` will only create or update
-unpublished drafts and will include remote timestamp conflict checks.
+`draft`, `revise`, and `push` are next. Drafting will work section by
+section from an approved brief and preserve human edits. `push` will only
+create or update unpublished Forem drafts and will include remote timestamp
+conflict checks.
 
 ## Security invariants
 

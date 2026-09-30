@@ -14,6 +14,20 @@ export type StoredResearchArticle = {
   tags: string[];
 };
 
+export type StoredEditorialProject = {
+  id: string;
+  slug: string;
+  title: string;
+  thesis: string;
+  audience: string;
+  status: string;
+  workspacePath: string;
+  remoteArticleId: number | null;
+  lastRemoteEditedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export class AgentDatabase {
   private readonly db: DatabaseSync;
 
@@ -90,6 +104,20 @@ export class AgentDatabase {
         FOREIGN KEY (article_id) REFERENCES articles(id) ON DELETE CASCADE
       );
 
+      CREATE TABLE IF NOT EXISTS editorial_projects (
+        id TEXT PRIMARY KEY,
+        slug TEXT NOT NULL UNIQUE,
+        title TEXT NOT NULL,
+        thesis TEXT NOT NULL,
+        audience TEXT NOT NULL,
+        status TEXT NOT NULL,
+        workspace_path TEXT NOT NULL,
+        remote_article_id INTEGER,
+        last_remote_edited_at TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+
       CREATE INDEX IF NOT EXISTS idx_articles_published_timestamp
         ON articles(published_timestamp DESC);
 
@@ -101,6 +129,9 @@ export class AgentDatabase {
 
       CREATE INDEX IF NOT EXISTS idx_owner_article_snapshots_article_id
         ON owner_article_snapshots(article_id);
+
+      CREATE INDEX IF NOT EXISTS idx_editorial_projects_status
+        ON editorial_projects(status);
     `);
   }
 
@@ -172,6 +203,95 @@ export class AgentDatabase {
       "owner_article_snapshots",
       "owner_runs",
     );
+  }
+
+  editorialProjectSlugExists(slug: string): boolean {
+    const row = this.db
+      .prepare("SELECT 1 AS found FROM editorial_projects WHERE slug = ? LIMIT 1")
+      .get(slug) as { found: number } | undefined;
+
+    return Boolean(row?.found);
+  }
+
+  createEditorialProject(input: {
+    id: string;
+    slug: string;
+    title: string;
+    thesis: string;
+    audience: string;
+    status: "proposed" | "approved";
+    workspacePath: string;
+  }): StoredEditorialProject {
+    const now = new Date().toISOString();
+
+    this.db.prepare(`
+      INSERT INTO editorial_projects (
+        id,
+        slug,
+        title,
+        thesis,
+        audience,
+        status,
+        workspace_path,
+        created_at,
+        updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      input.id,
+      input.slug,
+      input.title,
+      input.thesis,
+      input.audience,
+      input.status,
+      input.workspacePath,
+      now,
+      now,
+    );
+
+    const created = this.findEditorialProject(input.id);
+    if (!created) throw new Error("Failed to read newly created editorial project.");
+    return created;
+  }
+
+  findEditorialProject(reference: string): StoredEditorialProject | null {
+    const row = this.db.prepare(`
+      SELECT
+        id,
+        slug,
+        title,
+        thesis,
+        audience,
+        status,
+        workspace_path,
+        remote_article_id,
+        last_remote_edited_at,
+        created_at,
+        updated_at
+      FROM editorial_projects
+      WHERE id = ? OR slug = ?
+      LIMIT 1
+    `).get(reference, reference) as Record<string, unknown> | undefined;
+
+    return row ? mapEditorialProject(row) : null;
+  }
+
+  setEditorialProjectStatus(
+    reference: string,
+    status: "proposed" | "approved",
+  ): StoredEditorialProject {
+    const result = this.db.prepare(`
+      UPDATE editorial_projects
+      SET status = ?, updated_at = ?
+      WHERE id = ? OR slug = ?
+    `).run(status, new Date().toISOString(), reference, reference);
+
+    if (Number(result.changes) === 0) {
+      throw new Error(`Unknown editorial project: ${reference}`);
+    }
+
+    const updated = this.findEditorialProject(reference);
+    if (!updated) throw new Error("Failed to read updated editorial project.");
+    return updated;
   }
 
   private saveArticlesWithSnapshots(
@@ -311,4 +431,29 @@ export class AgentDatabase {
       tags: JSON.parse(String(row.tag_list_json)) as string[],
     }));
   }
+}
+
+function mapEditorialProject(
+  row: Record<string, unknown>,
+): StoredEditorialProject {
+  return {
+    id: String(row.id),
+    slug: String(row.slug),
+    title: String(row.title),
+    thesis: String(row.thesis),
+    audience: String(row.audience),
+    status: String(row.status),
+    workspacePath: String(row.workspace_path),
+    remoteArticleId:
+      row.remote_article_id === null || row.remote_article_id === undefined
+        ? null
+        : Number(row.remote_article_id),
+    lastRemoteEditedAt:
+      row.last_remote_edited_at === null ||
+      row.last_remote_edited_at === undefined
+        ? null
+        : String(row.last_remote_edited_at),
+    createdAt: String(row.created_at),
+    updatedAt: String(row.updated_at),
+  };
 }

@@ -3,6 +3,7 @@ import { Command, Option } from "commander";
 import { ensureHome, loadConfig } from "./config.js";
 import { runAnalyze } from "./commands/analyze.js";
 import { runOpportunities } from "./commands/opportunities.js";
+import { approvePlan, runPlan } from "./commands/plan.js";
 import { runResearch } from "./commands/research.js";
 import { interpretArticleAnalysis } from "./editorial/interpreter.js";
 import { createConfiguredModel } from "./providers/configured-model.js";
@@ -26,6 +27,7 @@ program
     database.close();
 
     console.log(`Initialized Forem Agent at ${config.homeDir}`);
+    console.log(`Editorial workspace: ${config.workspaceDir}`);
   });
 
 program
@@ -80,6 +82,7 @@ program
 
     console.table(
       opportunities.map((item) => ({
+        reference: `tag:${item.tag}`,
         tag: item.tag,
         articles: item.articleCount,
         avg_engagement: Math.round(item.averageEngagement * 10) / 10,
@@ -212,6 +215,42 @@ program
     for (const limitation of analysis.limitations) {
       console.log(`- ${limitation}`);
     }
+  });
+
+program
+  .command("plan <idea>")
+  .description(
+    'Create a proposed Markdown editorial brief from an idea or a "tag:<tag>" opportunity reference',
+  )
+  .action(async (idea) => {
+    const config = loadConfig();
+    ensureHome(config);
+
+    const result = await runPlan(config, idea);
+
+    console.log(`Project: ${result.project.id}`);
+    console.log(`Slug: ${result.project.slug}`);
+    console.log("Status: proposed");
+    console.log(`Brief: ${result.workspace.briefPath}`);
+    console.log(`Model: ${result.model}`);
+    console.log("");
+    console.log("Review and edit brief.md before approving it.");
+    console.log(
+      `Approve with: forem-agent approve ${result.project.slug}`,
+    );
+  });
+
+program
+  .command("approve <project>")
+  .description("Explicitly approve a proposed editorial brief")
+  .action((project) => {
+    const config = loadConfig();
+    ensureHome(config);
+
+    const approved = approvePlan(config, project);
+    console.log(`Approved: ${approved.slug}`);
+    console.log(`Workspace: ${approved.workspacePath}`);
+    console.log("The project is now eligible for the future draft workflow.");
   });
 
 await program.parseAsync(process.argv);
