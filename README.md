@@ -41,6 +41,8 @@ revision, approval, and publication.
 - optional `analyze --interpret` structured model interpretation
 - `plan <idea>` or `plan tag:<tag>` to create an editable proposed brief
 - `approve <project-id-or-slug>` as the explicit planning approval gate
+- `draft <project-id-or-slug>` for section-by-section generation from the current approved `brief.md`
+- draft creation refuses to overwrite an existing human-editable `draft.md`
 - OpenAI Responses adapter with strict JSON output and response storage disabled
 - fake model adapter for deterministic tests
 - GitHub Actions CI
@@ -117,14 +119,36 @@ npm run dev -- approve <project-id-or-slug>
 ```
 
 Approval changes both the local project record and `brief.md` to
-`status: approved`. Future `draft` work will refuse unapproved projects.
+`status: approved`.
+
+## Drafting workflow
+
+Drafting reads the current `brief.md` from disk, so edits made after planning
+and before drafting remain authoritative.
+
+```bash
+npm run dev -- draft <project-id-or-slug>
+```
+
+The model is called once per outline section rather than generating the whole
+article in one pass. The result is written to:
+
+```text
+articles/
+└── <project-slug>/
+    ├── brief.md
+    └── draft.md
+```
+
+Personal-experience placeholders and claims-to-verify are carried into the
+draft as visible author notes instead of being invented or silently resolved
+by the model. If `draft.md` already exists, meldr refuses to overwrite it.
 
 ## Planned commands
 
-`draft`, `revise`, and `push` are next. Drafting will work section by
-section from an approved brief and preserve human edits. `push` will only
-create or update unpublished Forem drafts and will include remote timestamp
-conflict checks.
+`revise` and `push` are next. Revision passes will preserve human edits,
+and `push` will only create or update unpublished Forem drafts with remote
+timestamp conflict checks.
 
 ## Security invariants
 
