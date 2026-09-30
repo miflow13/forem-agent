@@ -16,9 +16,31 @@ export const style = {
   magenta: code(35, 39),
 };
 
+const MELDR_LOGO = [
+  "╭─╲ ╱─╮   ███╗   ███╗███████╗██╗     ██████╗ ██████╗ ",
+  "│  ╳  │   ████╗ ████║██╔════╝██║     ██╔══██╗██╔══██╗",
+  "╰─╱ ╲─╯   ██╔████╔██║█████╗  ██║     ██║  ██║██████╔╝ ",
+  "          ██║╚██╔╝██║██╔══╝  ██║     ██║  ██║██╔══██╗ ",
+  "          ██║ ╚═╝ ██║███████╗███████╗██████╔╝██║  ██║ ",
+  "          ╚═╝     ╚═╝╚══════╝╚══════╝╚═════╝ ╚═╝  ╚═╝ ",
+];
+
+const MELDR_COMPACT = [
+  "╭─╲ ╱─╮",
+  "│  ╳  │  meldr",
+  "╰─╱ ╲─╯",
+];
+
+export function renderBrand(width = process.stdout.columns ?? 80): void {
+  const lines = width >= 68 ? MELDR_LOGO : MELDR_COMPACT;
+  for (const line of lines) {
+    console.log(style.bold(style.magenta(line)));
+  }
+  console.log(style.dim("editorial copilot for Forem / DEV"));
+}
+
 export function brand(): void {
-  console.log(style.bold(style.magenta("meldr")));
-  console.log(style.dim("editorial intelligence for Forem / DEV"));
+  renderBrand();
   console.log("");
 }
 
