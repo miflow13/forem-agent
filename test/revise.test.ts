@@ -15,7 +15,7 @@ import { runRevision } from "../src/commands/revise.js";
 import { FakeStructuredTextModel } from "../src/providers/fake-model.js";
 import { AgentDatabase } from "../src/storage/database.js";
 
-test("structure revision creates a proposal without modifying draft.md", async () => {
+test("structure revision migrates legacy notes and leaves draft.md unchanged", async () => {
   const fixture = createFixture();
 
   try {
@@ -40,17 +40,44 @@ test("structure revision creates a proposal without modifying draft.md", async (
       model,
     );
 
+    assert.equal(result.sourceArticle, "draft.md");
     assert.equal(existsSync(result.outputPath), true);
     assert.equal(readFileSync(fixture.draftPath, "utf8"), originalDraft);
+
+    const payload = JSON.parse(model.requests[0]?.input ?? "{}") as {
+      current_article_markdown?: string;
+      editorial_notes_markdown?: string;
+    };
+
     assert.match(
-      model.requests[0]?.input ?? "",
+      payload.current_article_markdown ?? "",
       /MANUAL DRAFT EDIT THAT MUST BE THE SOURCE OF TRUTH/,
+    );
+    assert.doesNotMatch(
+      payload.current_article_markdown ?? "",
+      /Author notes to complete|Claims to verify before publishing/,
+    );
+    assert.match(
+      payload.editorial_notes_markdown ?? "",
+      /Add the real first-hand debugging example/,
+    );
+    assert.match(
+      payload.editorial_notes_markdown ?? "",
+      /Verify the API behavior against primary docs/,
     );
 
     const proposal = readFileSync(result.outputPath, "utf8");
+    assert.match(proposal, /source_article: draft\.md/);
+    assert.match(proposal, /source_sha256: [a-f0-9]{64}/);
     assert.match(proposal, /non-destructive proposal/i);
-    assert.match(proposal, /Tighten repeated framing/);
     assert.match(proposal, /A tighter proposed article/);
+
+    const migratedNotes = readFileSync(
+      join(fixture.workspacePath, "editorial-notes.md"),
+      "utf8",
+    );
+    assert.match(migratedNotes, /Add the real first-hand debugging example/);
+    assert.match(migratedNotes, /Verify the API behavior against primary docs/);
   } finally {
     fixture.cleanup();
   }
@@ -67,7 +94,8 @@ test("claim-check produces a verification report without claiming verification",
           claim: "System prompts reliably prevent prompt injection.",
           risk: "high",
           why_verify: "The wording overstates a model-behavior guarantee.",
-          suggested_source_type: "Primary model vendor documentation and security guidance",
+          suggested_source_type:
+            "Primary model vendor documentation and security guidance",
         },
       ],
     });
@@ -80,6 +108,8 @@ test("claim-check produces a verification report without claiming verification",
     );
 
     const report = readFileSync(result.outputPath, "utf8");
+    assert.match(report, /source_article: draft\.md/);
+    assert.match(report, /source_sha256: [a-f0-9]{64}/);
     assert.match(report, /identifies claims to verify/i);
     assert.match(report, /does not independently verify/i);
     assert.match(report, /System prompts reliably prevent prompt injection/);
@@ -162,6 +192,15 @@ function createFixture() {
       "MANUAL DRAFT EDIT THAT MUST BE THE SOURCE OF TRUTH",
       "",
       "The same thesis appears again later and may need structural tightening.",
+      "",
+      "## Author notes to complete",
+      "",
+      "- Add the real first-hand debugging example.",
+      "",
+      "## Claims to verify before publishing",
+      "",
+      "- Verify the API behavior against primary docs.",
+      "",
     ].join("\n"),
     "utf8",
   );
@@ -181,6 +220,7 @@ function createFixture() {
   return {
     config,
     slug,
+    workspacePath,
     draftPath,
     cleanup: () => rmSync(root, { recursive: true, force: true }),
   };
