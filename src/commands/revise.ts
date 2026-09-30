@@ -84,7 +84,7 @@ export async function runRevision(
             review: revision.data,
           })
         : renderRewriteProposal({
-            pass,
+            pass: pass as Exclude<RevisionPass, "claim-check">,
             sourceDraft: "draft.md",
             model: revision.model,
             revision: revision.data,
