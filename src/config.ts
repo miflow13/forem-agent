@@ -1,6 +1,7 @@
-import { mkdirSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { resolve } from "node:path";
+import { loadEnvFile } from "node:process";
 import { z } from "zod";
 
 const envSchema = z.object({
@@ -23,6 +24,15 @@ export type AppConfig = {
   openaiModel: string;
   openaiBaseUrl: string;
 };
+
+
+export function loadProjectEnv(
+  envPath: string = resolve(process.cwd(), ".env"),
+): boolean {
+  if (!existsSync(envPath)) return false;
+  loadEnvFile(envPath);
+  return true;
+}
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   const parsed = envSchema.parse({
