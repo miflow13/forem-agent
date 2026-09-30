@@ -1,8 +1,7 @@
+<img width="1983" height="793" alt="ChatGPT Image Sep 30, 2026, 12_34_10 PM" src="https://github.com/user-attachments/assets/352ec936-430d-4742-bdbf-52b7f6c7e616" />
+
 # meldr
-
-A local-first editorial copilot for Forem/DEV writers.
-
-> Repository name: `forem-agent`. The user-facing command and product name are `meldr`.
+A local-first editorial intelligence CLI for Forem/DEV writers.
 
 The goal is not to auto-publish AI-written articles. The agent gathers public
 Forem signals, stores reproducible research locally, runs deterministic
