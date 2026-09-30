@@ -1,4 +1,5 @@
 # forem-agent
+(Loom)
 
 A local-first editorial intelligence CLI for Forem/DEV writers.
 
