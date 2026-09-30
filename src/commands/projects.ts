@@ -77,11 +77,11 @@ function summarizeProject(project: StoredEditorialProject): ProjectSummary {
   if (!hasBrief) {
     nextAction = "Restore or recreate brief.md before continuing.";
   } else if (stage === "proposed") {
-    nextAction = `forem-agent approve ${project.slug}`;
+    nextAction = `meldr approve ${project.slug}`;
   } else if (stage === "approved") {
-    nextAction = `forem-agent draft ${project.slug}`;
+    nextAction = `meldr draft ${project.slug}`;
   } else if (stage === "draft") {
-    nextAction = `forem-agent revise ${project.slug} --pass structure`;
+    nextAction = `meldr revise ${project.slug} --pass structure`;
   } else if (stage === "working") {
     nextAction = nextWorkingAction(project.slug, acceptedPass);
   } else {
@@ -122,11 +122,11 @@ function nextWorkingAction(
   acceptedPass: "structure" | "voice" | null,
 ): string {
   if (acceptedPass === "structure") {
-    return `forem-agent revise ${slug} --pass voice`;
+    return `meldr revise ${slug} --pass voice`;
   }
   if (acceptedPass === "voice") {
-    return `forem-agent revise ${slug} --pass claim-check`;
+    return `meldr revise ${slug} --pass claim-check`;
   }
 
-  return `forem-agent revise ${slug} --pass structure`;
+  return `meldr revise ${slug} --pass structure`;
 }
