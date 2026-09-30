@@ -1,5 +1,5 @@
 # forem-agent
-(Loom)
+meldr
 
 A local-first editorial intelligence CLI for Forem/DEV writers.
 
