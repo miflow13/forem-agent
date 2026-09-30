@@ -16,27 +16,28 @@ export const style = {
   magenta: code(35, 39),
 };
 
-const MELDR_LOGO = [
-  "╭─╲ ╱─╮   ███╗   ███╗███████╗██╗     ██████╗ ██████╗ ",
-  "│  ╳  │   ████╗ ████║██╔════╝██║     ██╔══██╗██╔══██╗",
-  "╰─╱ ╲─╯   ██╔████╔██║█████╗  ██║     ██║  ██║██████╔╝ ",
-  "          ██║╚██╔╝██║██╔══╝  ██║     ██║  ██║██╔══██╗ ",
-  "          ██║ ╚═╝ ██║███████╗███████╗██████╔╝██║  ██║ ",
-  "          ╚═╝     ╚═╝╚══════╝╚══════╝╚═════╝ ╚═╝  ╚═╝ ",
-];
-
-const MELDR_COMPACT = [
-  "╭─╲ ╱─╮",
-  "│  ╳  │  meldr",
-  "╰─╱ ╲─╯",
+const MELDR_MARK = [
+  "╭╲ ╱╮",
+  "│ ╳ │",
+  "╰╱ ╲╯",
 ];
 
 export function renderBrand(width = process.stdout.columns ?? 80): void {
-  const lines = width >= 68 ? MELDR_LOGO : MELDR_COMPACT;
-  for (const line of lines) {
-    console.log(style.bold(style.magenta(line)));
+  if (width < 36) {
+    console.log(style.bold(style.magenta("⟦╳⟧ meldr")));
+    console.log(style.dim("editorial copilot"));
+    return;
   }
-  console.log(style.dim("editorial copilot for Forem / DEV"));
+
+  console.log(
+    `${style.magenta(MELDR_MARK[0] ?? "")}  ${style.bold(style.magenta("meldr"))}`,
+  );
+  console.log(
+    `${style.magenta(MELDR_MARK[1] ?? "")}  ${style.dim("editorial copilot")}`,
+  );
+  console.log(
+    `${style.magenta(MELDR_MARK[2] ?? "")}  ${style.dim("for Forem / DEV")}`,
+  );
 }
 
 export function brand(): void {
