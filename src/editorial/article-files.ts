@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import type { WritingMode } from "../storage/database.js";
+import type { SectionAssistanceType } from "./drafter.js";
 
 export type ExtractedEditorialNotes = {
   articleMarkdown: string;
@@ -169,4 +170,101 @@ export function renderAuthorWorkingMarkdown(input: {
     `# ${input.title}`,
     "",
   ].join("\n");
+}
+
+export type ParsedSectionAssistanceProposal = {
+  sourceArticle: string;
+  sourceSha256: string | null;
+  sectionIndex: number;
+  sectionHeading: string;
+  assistanceType: SectionAssistanceType;
+  proposedContent: string;
+};
+
+export function renderSectionAssistanceProposal(input: {
+  sourceSha256: string;
+  sectionIndex: number;
+  sectionHeading: string;
+  assistanceType: SectionAssistanceType;
+  model: string;
+  proposedContent: string;
+}): string {
+  return [
+    "---",
+    "revision_pass: section_assist",
+    "source_article: working.md",
+    `source_sha256: ${input.sourceSha256}`,
+    `section_index: ${input.sectionIndex}`,
+    `section_heading: ${JSON.stringify(input.sectionHeading)}`,
+    `assistance_type: ${input.assistanceType}`,
+    `model: ${input.model}`,
+    `created_at: ${new Date().toISOString()}`,
+    "---",
+    "",
+    "# Section assistance proposal",
+    "",
+    "> This model output is a non-destructive proposal. Review it before accepting it into working.md.",
+    "",
+    "## Proposed section content",
+    "",
+    input.proposedContent.trim(),
+    "",
+  ].join("\n");
+}
+
+export function parseSectionAssistanceProposal(
+  markdown: string,
+): ParsedSectionAssistanceProposal {
+  const lines = markdown.split(/\r?\n/);
+  const fields: Record<string, string> = {};
+
+  if (lines[0]?.trim() === "---") {
+    for (let index = 1; index < lines.length; index += 1) {
+      const line = lines[index] ?? "";
+      if (line.trim() === "---") break;
+      const match = line.match(/^([A-Za-z0-9_-]+):\s*(.*)$/);
+      if (!match) continue;
+      let value = match[2]?.trim() ?? "";
+      if (
+        (value.startsWith('"') && value.endsWith('"')) ||
+        (value.startsWith("'") && value.endsWith("'"))
+      ) {
+        value = value.slice(1, -1);
+      }
+      fields[match[1] ?? ""] = value;
+    }
+  }
+
+  if (fields.revision_pass !== "section_assist") {
+    throw new Error("Proposal is not section assistance.");
+  }
+  if (
+    fields.assistance_type !== "talking_points" &&
+    fields.assistance_type !== "starter" &&
+    fields.assistance_type !== "draft_section"
+  ) {
+    throw new Error("Section proposal has an unknown assistance type.");
+  }
+
+  const marker = lines.findIndex(
+    (line) => line.trim() === "## Proposed section content",
+  );
+  const proposedContent =
+    marker >= 0 ? lines.slice(marker + 1).join("\n").trim() : "";
+  const sectionIndex = Number(fields.section_index);
+  if (!Number.isInteger(sectionIndex) || sectionIndex < 1) {
+    throw new Error("Section proposal has an invalid section index.");
+  }
+  if (!fields.section_heading || !proposedContent) {
+    throw new Error("Section proposal is missing its heading or content.");
+  }
+
+  return {
+    sourceArticle: fields.source_article ?? "",
+    sourceSha256: fields.source_sha256 ?? null,
+    sectionIndex,
+    sectionHeading: fields.section_heading,
+    assistanceType: fields.assistance_type,
+    proposedContent: proposedContent + "\n",
+  };
 }
