@@ -1,6 +1,7 @@
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { AppConfig } from "../config.js";
+import { renderEditorialNotesMarkdown } from "../editorial/article-files.js";
 import {
   generateDraftSections,
   parseDraftBrief,
@@ -15,6 +16,7 @@ export type DraftResult = {
   projectId: string;
   slug: string;
   draftPath: string;
+  editorialNotesPath: string;
   sectionCount: number;
   model: string;
 };
@@ -47,6 +49,10 @@ export async function runDraft(
 
     const briefPath = resolve(project.workspacePath, "brief.md");
     const draftPath = resolve(project.workspacePath, "draft.md");
+    const editorialNotesPath = resolve(
+      project.workspacePath,
+      "editorial-notes.md",
+    );
 
     if (!existsSync(briefPath)) {
       throw new Error(`Approved brief is missing: ${briefPath}`);
@@ -54,6 +60,11 @@ export async function runDraft(
     if (existsSync(draftPath)) {
       throw new Error(
         `Draft already exists: ${draftPath}. Refusing to overwrite human-editable content.`,
+      );
+    }
+    if (existsSync(editorialNotesPath)) {
+      throw new Error(
+        `Editorial notes already exist: ${editorialNotesPath}. Refusing to overwrite author-owned notes.`,
       );
     }
 
@@ -71,17 +82,33 @@ export async function runDraft(
       title: brief.title,
       model: generated.model,
       sections: generated.sections,
+    });
+    const editorialNotes = renderEditorialNotesMarkdown({
+      projectId: project.id,
+      slug: project.slug,
       personalExperiencePlaceholders:
         brief.personalExperiencePlaceholders,
       technicalClaimsToVerify: brief.technicalClaimsToVerify,
     });
+
+    let wroteDraft = false;
+    let wroteNotes = false;
 
     try {
       writeFileSync(draftPath, markdown, {
         encoding: "utf8",
         flag: "wx",
       });
+      wroteDraft = true;
+
+      writeFileSync(editorialNotesPath, editorialNotes, {
+        encoding: "utf8",
+        flag: "wx",
+      });
+      wroteNotes = true;
     } catch (error) {
+      if (wroteDraft) rmSync(draftPath, { force: true });
+      if (wroteNotes) rmSync(editorialNotesPath, { force: true });
       const code =
         typeof error === "object" && error !== null && "code" in error
           ? String((error as { code?: unknown }).code)
@@ -98,6 +125,7 @@ export async function runDraft(
       projectId: project.id,
       slug: project.slug,
       draftPath,
+      editorialNotesPath,
       sectionCount: generated.sections.length,
       model: generated.model,
     };
