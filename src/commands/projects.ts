@@ -1,9 +1,12 @@
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { AppConfig } from "../config.js";
+import { hasArticleBody } from "../editorial/article-files.js";
+import { parseDraftBrief } from "../editorial/drafter.js";
 import {
   AgentDatabase,
   type StoredEditorialProject,
+  type WritingMode,
 } from "../storage/database.js";
 
 export type ProjectSummary = {
@@ -16,7 +19,10 @@ export type ProjectSummary = {
   hasDraft: boolean;
   hasWorking: boolean;
   hasEditorialNotes: boolean;
+  hasArticleContent: boolean;
   acceptedPass: "structure" | "voice" | null;
+  nextSectionNumber: number | null;
+  writingMode: WritingMode | null;
   stage: "proposed" | "approved" | "draft" | "working" | string;
   nextAction: string;
 };
@@ -61,6 +67,9 @@ function summarizeProject(project: StoredEditorialProject): ProjectSummary {
   const hasDraft = existsSync(draftPath);
   const hasWorking = existsSync(workingPath);
   const hasEditorialNotes = existsSync(editorialNotesPath);
+  const hasArticleContent =
+    (hasWorking && hasArticleBody(readFileSync(workingPath, "utf8"))) ||
+    (hasDraft && hasArticleBody(readFileSync(draftPath, "utf8")));
 
   const acceptedPass = hasWorking
     ? acceptedRevisionPass(workingPath)
@@ -71,6 +80,15 @@ function summarizeProject(project: StoredEditorialProject): ProjectSummary {
     : hasDraft
       ? "draft"
       : project.status;
+  const writingMode = effectiveWritingMode(
+    project,
+    hasDraft,
+    hasWorking,
+  );
+  const nextSectionNumber =
+    writingMode === "section_assisted" && hasWorking
+      ? findNextSectionNumber(briefPath, workingPath)
+      : null;
 
   let nextAction: string;
 
@@ -79,11 +97,22 @@ function summarizeProject(project: StoredEditorialProject): ProjectSummary {
   } else if (stage === "proposed") {
     nextAction = `meldr approve ${project.slug}`;
   } else if (stage === "approved") {
-    nextAction = `meldr draft ${project.slug}`;
+    nextAction =
+      writingMode === "ai_first_draft"
+        ? `meldr draft ${project.slug}`
+        : `meldr mode ${project.slug}`;
   } else if (stage === "draft") {
     nextAction = `meldr revise ${project.slug} --pass structure`;
   } else if (stage === "working") {
-    nextAction = nextWorkingAction(project.slug, acceptedPass);
+    nextAction =
+      writingMode === "human" && !hasArticleContent
+        ? `Write in working.md before review: ${workingPath}`
+        : nextWorkingAction(
+            project.slug,
+            acceptedPass,
+            writingMode,
+            nextSectionNumber,
+          );
   } else {
     nextAction = "Inspect the project workspace before continuing.";
   }
@@ -98,10 +127,24 @@ function summarizeProject(project: StoredEditorialProject): ProjectSummary {
     hasDraft,
     hasWorking,
     hasEditorialNotes,
+    hasArticleContent,
     acceptedPass,
+    nextSectionNumber,
+    writingMode,
     stage,
     nextAction,
   };
+}
+
+function effectiveWritingMode(
+  project: StoredEditorialProject,
+  hasDraft: boolean,
+  hasWorking: boolean,
+): WritingMode | null {
+  if (project.writingMode) return project.writingMode;
+  if (hasDraft) return "ai_first_draft";
+  if (hasWorking) return "human";
+  return null;
 }
 
 function acceptedRevisionPass(
@@ -120,7 +163,16 @@ function acceptedRevisionPass(
 function nextWorkingAction(
   slug: string,
   acceptedPass: "structure" | "voice" | null,
+  writingMode: WritingMode | null,
+  nextSectionNumber: number | null,
 ): string {
+  if (
+    writingMode === "section_assisted" &&
+    acceptedPass === null &&
+    nextSectionNumber !== null
+  ) {
+    return `meldr section ${slug} ${nextSectionNumber} --assist talking_points`;
+  }
   if (acceptedPass === "structure") {
     return `meldr revise ${slug} --pass voice`;
   }
@@ -129,4 +181,28 @@ function nextWorkingAction(
   }
 
   return `meldr revise ${slug} --pass structure`;
+}
+
+function findNextSectionNumber(
+  briefPath: string,
+  workingPath: string,
+): number | null {
+  if (!existsSync(briefPath) || !existsSync(workingPath)) return null;
+
+  try {
+    const brief = parseDraftBrief(readFileSync(briefPath, "utf8"));
+    const working = readFileSync(workingPath, "utf8");
+    const completedHeadings = new Set(
+      working
+        .split(/\r?\n/)
+        .map((line) => line.match(/^##\s+(.+)$/)?.[1]?.trim())
+        .filter((heading): heading is string => Boolean(heading)),
+    );
+    const nextIndex = brief.outline.findIndex(
+      (section) => !completedHeadings.has(section.heading),
+    );
+    return nextIndex < 0 ? null : nextIndex + 1;
+  } catch {
+    return null;
+  }
 }

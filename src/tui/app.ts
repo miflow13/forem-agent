@@ -14,8 +14,16 @@ import {
 } from "../commands/projects.js";
 import { runResearch } from "../commands/research.js";
 import { runRevision } from "../commands/revise.js";
+import {
+  acceptSectionAssistance,
+  runSectionAssistance,
+  type SectionAssistanceType,
+} from "../commands/section-assist.js";
+import { selectWritingMode } from "../commands/writing-mode.js";
 import { parseRevisionProposal } from "../editorial/reviser.js";
 import { sha256 } from "../editorial/article-files.js";
+import { parseDraftBrief } from "../editorial/drafter.js";
+import type { WritingMode } from "../storage/database.js";
 import {
   clearScreen,
   confirm,
@@ -51,7 +59,9 @@ type MainAction =
 
 type ProjectAction =
   | "approve"
+  | "choose-mode"
   | "draft"
+  | "section-assist"
   | "structure"
   | "voice"
   | "claim-check"
@@ -96,9 +106,9 @@ export async function runInteractive(initialConfig: AppConfig): Promise<void> {
             ]
           : []),
         {
-          label: "Start a new article",
+          label: "Start a writing project",
           value: "new",
-          description: "Turn a plain-English idea into an editable brief.",
+          description: "Turn a plain-English idea into an editable writing brief.",
         },
         {
           label: "Projects",
@@ -190,7 +200,7 @@ async function projectsScreen(config: AppConfig): Promise<void> {
       clearScreen();
       warn("No projects yet.");
       console.log("");
-      console.log("Start with “Start a new article” from the main menu.");
+      console.log("Start with “Start a writing project” from the main menu.");
       await pause();
       return;
     }
@@ -246,7 +256,7 @@ async function projectScreen(
     if (action === "approve") {
       if (
         await confirm(
-          "Approve this brief and allow drafting from its current contents?",
+          "Approve this brief and choose how you want to write from it?",
         )
       ) {
         const approved = approvePlan(config, project.project.slug);
@@ -256,7 +266,7 @@ async function projectScreen(
         console.log("");
         console.log(
           style.dim(
-            "You can still edit brief.md before drafting; the file on disk remains authoritative.",
+            "You can still edit brief.md. Next, choose whether you will write, work section by section, or explicitly request an AI first draft.",
           ),
         );
         await pause();
@@ -264,8 +274,18 @@ async function projectScreen(
       continue;
     }
 
+    if (action === "choose-mode") {
+      await chooseWritingModeFlow(config, project);
+      continue;
+    }
+
     if (action === "draft") {
       await draftFlow(config, project);
+      continue;
+    }
+
+    if (action === "section-assist") {
+      await sectionAssistedFlow(config, project);
       continue;
     }
 
@@ -316,7 +336,7 @@ async function projectScreen(
   }
 }
 
-function projectActions(
+export function projectActions(
   project: ProjectSummary,
   hasPendingRevision: boolean,
   hasCurrentClaimReport: boolean,
@@ -330,19 +350,30 @@ function projectActions(
     value: ProjectAction;
     description?: string;
   }> = [];
+  const hasArticle = project.hasDraft || project.hasWorking;
+  const hasReviewableArticle =
+    project.hasDraft || (project.hasWorking && project.hasArticleContent);
 
   if (project.stage === "proposed") {
     actions.push({
       label: "Next · Approve brief",
       value: "approve",
-      description: "Mark the edited brief ready for drafting.",
+      description: "Mark the edited brief ready for a writing-mode choice.",
     });
   } else if (project.stage === "approved") {
-    actions.push({
-      label: "Next · Generate draft",
-      value: "draft",
-      description: "Draft section-by-section from the approved brief.",
-    });
+    actions.push(
+      project.writingMode === "ai_first_draft"
+        ? {
+            label: "Next · Generate confirmed AI first draft",
+            value: "draft",
+            description: "Create the immutable starting snapshot you explicitly selected.",
+          }
+        : {
+            label: "Next · Choose writing mode",
+            value: "choose-mode",
+            description: "Decide how much writing help you want for this project.",
+          },
+    );
   } else if (project.stage === "draft") {
     actions.push({
       label: "Next · Review article structure",
@@ -350,7 +381,26 @@ function projectActions(
       description: "Find repetition, pacing, and organization problems.",
     });
   } else if (project.stage === "working") {
-    if (project.acceptedPass === "structure") {
+    if (
+      project.writingMode === "section_assisted" &&
+      project.acceptedPass === null &&
+      project.nextSectionNumber !== null
+    ) {
+      actions.push({
+        label: "Next · Write section by section",
+        value: "section-assist",
+        description: "Choose what help, if any, you want for one section.",
+      });
+    } else if (
+      project.writingMode === "human" &&
+      !project.hasArticleContent
+    ) {
+      actions.push({
+        label: "Next · Write in working.md",
+        value: "edit",
+        description: "Meldr will wait for your prose before offering article review.",
+      });
+    } else if (project.acceptedPass === "structure") {
       actions.push({
         label: "Next · Review writing voice",
         value: "voice",
@@ -387,12 +437,12 @@ function projectActions(
   }
 
   actions.push({
-    label: project.hasDraft ? "Open current article in editor" : "Open brief in editor",
+    label: hasArticle ? "Open current article in editor" : "Open brief in editor",
     value: "edit",
     description: "Uses $VISUAL, $EDITOR, or VS Code when available.",
   });
 
-  if (project.hasDraft) {
+  if (hasReviewableArticle) {
     actions.push({
       label: "Preview current article",
       value: "preview",
@@ -410,7 +460,7 @@ function projectActions(
     });
   }
 
-  if (project.hasDraft) {
+  if (hasReviewableArticle) {
     actions.push(
       {
         label: "Run structure review again",
@@ -437,13 +487,184 @@ function projectActions(
   return dedupeActions(actions);
 }
 
-async function draftFlow(
+export function writingModeMenuOptions(): Array<{
+  label: string;
+  value: WritingMode;
+  description: string;
+}> {
+  return [
+    {
+      label: "Human draft / bring my own draft (RECOMMENDED)",
+      value: "human",
+      description: "Write in working.md, then use meldr for structure, voice, proofreading, and claim review.",
+    },
+    {
+      label: "Write with meldr section by section",
+      value: "section_assisted",
+      description: "Choose assistance separately for each section; no prose is generated automatically.",
+    },
+    {
+      label: "Generate an AI first draft",
+      value: "ai_first_draft",
+      description: "Explicit opt-in. The result is a starting point, not publish-ready prose.",
+    },
+  ];
+}
+
+async function chooseWritingModeFlow(
   config: AppConfig,
   project: ProjectSummary,
 ): Promise<void> {
+  const writingMode = await selectMenu<WritingMode>({
+    title: "Choose writing mode",
+    subtitle: "Meldr is an editor before it is a writer.",
+    body: [
+      "Human drafting is recommended. Meldr can research, structure, review, proofread, and challenge your work without writing it for you.",
+      "Full-article generation happens only when you explicitly choose and confirm that mode.",
+    ],
+    options: writingModeMenuOptions(),
+    canGoBack: true,
+  });
+  if (!writingMode) return;
+
+  let confirmedAiFirstDraft = false;
+  if (writingMode === "ai_first_draft") {
+    confirmedAiFirstDraft = await confirm(
+      "Generate a full AI first draft? It is only a starting point and must be reviewed before publication.",
+    );
+    if (!confirmedAiFirstDraft) return;
+  }
+
+  const result = selectWritingMode(
+    config,
+    project.project.slug,
+    writingMode,
+    { confirmAiFirstDraft: confirmedAiFirstDraft },
+  );
+
+  if (writingMode === "ai_first_draft") {
+    await draftFlow(
+      config,
+      getProjectStatus(config, project.project.slug),
+      true,
+    );
+    return;
+  }
+
+  clearScreen();
+  success(
+    writingMode === "human"
+      ? "Human writing workspace ready"
+      : "Section-assisted workspace ready",
+  );
+  keyValue("Article", result.workingPath ?? "not created");
+  keyValue("Mode", writingModeLabel(writingMode));
+  console.log("");
+  console.log(
+    style.dim(
+      "working.md is yours. Meldr will not replace it without an explicit accepted proposal.",
+    ),
+  );
+  if (result.workingPath) openPathInEditor(result.workingPath);
+  await pause();
+}
+
+async function sectionAssistedFlow(
+  config: AppConfig,
+  project: ProjectSummary,
+): Promise<void> {
+  const brief = parseDraftBrief(readFileSync(project.briefPath, "utf8"));
+  const sectionNumber = await selectMenu<number>({
+    title: "Choose a section",
+    subtitle: "Nothing is generated until you choose a help action.",
+    options: brief.outline.map((item, index) => ({
+      label: `${index + 1}. ${item.heading}`,
+      value: index + 1,
+      description: item.intent,
+    })),
+    canGoBack: true,
+  });
+  if (!sectionNumber) return;
+
+  type SectionChoice = SectionAssistanceType | "write" | "skip";
+  const choice = await selectMenu<SectionChoice>({
+    title: brief.outline[sectionNumber - 1]?.heading ?? "Section",
+    subtitle: "You decide whether meldr writes any prose for this section.",
+    options: [
+      {
+        label: "I'll write this section",
+        value: "write",
+        description: "Open working.md and keep authorship fully yours.",
+      },
+      {
+        label: "Suggest talking points",
+        value: "talking_points",
+        description: "Generate concise ideas, not finished section prose.",
+      },
+      {
+        label: "Help me start it",
+        value: "starter",
+        description: "Generate a short opening passage for review.",
+      },
+      {
+        label: "Draft this section from my approved brief",
+        value: "draft_section",
+        description: "Generate one complete section proposal for review.",
+      },
+      {
+        label: "Skip for now",
+        value: "skip",
+      },
+    ],
+    canGoBack: true,
+  });
+  if (!choice || choice === "skip") return;
+  if (choice === "write") {
+    openPathInEditor(project.workingPath);
+    await pause();
+    return;
+  }
+
+  clearScreen();
+  section("Creating section proposal");
+  info("Using only the approved brief and this section's evidence…");
+  const result = await runSectionAssistance(
+    config,
+    project.project.slug,
+    sectionNumber,
+    choice,
+  );
+  console.log("");
+  printPreview(readFileSync(result.proposalPath, "utf8"), 42);
+  console.log("");
+
+  if (await confirm("Accept this proposal into working.md?")) {
+    const accepted = acceptSectionAssistance(
+      config,
+      project.project.slug,
+      basename(result.proposalPath),
+    );
+    success(`Accepted section · ${accepted.sectionHeading}`);
+    keyValue("Article", accepted.workingPath);
+  } else {
+    console.log(
+      style.dim(
+        "Proposal kept in revisions/. working.md was not changed.",
+      ),
+    );
+  }
+  await pause();
+}
+
+async function draftFlow(
+  config: AppConfig,
+  project: ProjectSummary,
+  confirmed = false,
+): Promise<void> {
   if (
+    !confirmed &&
     !(await confirm(
-      "Generate the article draft now? This may make several model calls.",
+      "Generate an AI first draft now? It is a starting point, not publish-ready prose.",
     ))
   ) {
     return;
@@ -574,7 +795,7 @@ async function acceptFlow(
 
 async function startArticleFlow(config: AppConfig): Promise<void> {
   clearScreen();
-  section("Start a new article");
+  section("Start a writing project");
   console.log(
     style.dim(
       "Describe what you want to write about. A sentence is enough.",
@@ -598,7 +819,7 @@ async function startArticleFlow(config: AppConfig): Promise<void> {
     console.log("");
     console.log(
       style.dim(
-        "Review/edit brief.md before approving it. Meldr will not draft until you approve.",
+        "Review/edit brief.md before approving it. Approval leads to a writing-mode choice; it does not generate an article.",
       ),
     );
 
@@ -807,6 +1028,7 @@ function showProjectDetails(project: ProjectSummary): void {
   clearScreen();
   section(project.project.title);
   keyValue("Stage", friendlyStage(project));
+  keyValue("Writing mode", writingModeLabel(project.writingMode));
   keyValue("Brief", project.briefPath);
   keyValue("Draft", project.hasDraft ? project.draftPath : "not created");
   keyValue(
@@ -884,7 +1106,7 @@ function showClaimReportCompact(path: string): void {
 function latestCurrentClaimReport(
   project: ProjectSummary,
 ): string | null {
-  if (!project.hasDraft) return null;
+  if (!project.hasDraft && !project.hasWorking) return null;
 
   const revisionsDir = resolve(
     project.project.workspacePath,
@@ -971,10 +1193,25 @@ function latestAcceptableRevision(
   return null;
 }
 
-function friendlyStage(project: ProjectSummary): string {
+export function friendlyStage(project: ProjectSummary): string {
   if (project.stage === "proposed") return "Brief ready for review";
-  if (project.stage === "approved") return "Ready to draft";
+  if (project.stage === "approved") return "Writing mode not chosen";
   if (project.stage === "draft") return "Draft ready for structure review";
+  if (
+    project.stage === "working" &&
+    project.writingMode === "section_assisted" &&
+    project.acceptedPass === null &&
+    project.nextSectionNumber !== null
+  ) {
+    return "Writing section by section";
+  }
+  if (
+    project.stage === "working" &&
+    project.writingMode === "human" &&
+    !project.hasArticleContent
+  ) {
+    return "Waiting for your draft";
+  }
   if (
     project.stage === "working" &&
     project.acceptedPass === "structure"
@@ -991,13 +1228,32 @@ function friendlyStage(project: ProjectSummary): string {
   return project.stage;
 }
 
-function friendlyNextStep(
+export function friendlyNextStep(
   project: ProjectSummary,
   hasCurrentClaimReport = false,
 ): string {
   if (project.stage === "proposed") return "Review and approve the brief";
-  if (project.stage === "approved") return "Generate the first draft";
+  if (project.stage === "approved") {
+    return project.writingMode === "ai_first_draft"
+      ? "Generate the confirmed AI first draft"
+      : "Choose writing mode";
+  }
   if (project.stage === "draft") return "Review article structure";
+  if (
+    project.stage === "working" &&
+    project.writingMode === "section_assisted" &&
+    project.acceptedPass === null &&
+    project.nextSectionNumber !== null
+  ) {
+    return `Write section ${project.nextSectionNumber}`;
+  }
+  if (
+    project.stage === "working" &&
+    project.writingMode === "human" &&
+    !project.hasArticleContent
+  ) {
+    return "Write your draft in working.md";
+  }
   if (
     project.stage === "working" &&
     project.acceptedPass === "structure"
@@ -1021,6 +1277,8 @@ function showHelp(): void {
   console.log(
     [
       "You do not need to memorize commands in interactive mode.",
+      "Meldr is an editor before it is a writer: it helps research, structure, review, proofread, and challenge your work.",
+      "It generates a full article only when you explicitly choose and confirm AI first draft mode.",
       "",
       "Typical article flow:",
       "",
@@ -1030,7 +1288,9 @@ function showHelp(): void {
       "      ↓",
       "  Approve brief",
       "      ↓",
-      "  Generate draft",
+      "  Choose writing mode",
+      "      ↓",
+      "  Write it yourself (recommended) / work section by section / confirm AI first draft",
       "      ↓",
       "  Structure review → accept",
       "      ↓",
@@ -1038,7 +1298,8 @@ function showHelp(): void {
       "      ↓",
       "  Claim check",
       "",
-      "Meldr keeps the original draft, accepted working article,",
+      "When AI-first mode is chosen, meldr keeps the original draft immutable.",
+      "For every mode, the accepted working article,",
       "editorial notes, and revision history as separate files.",
       "",
       "Arrow keys move. Enter chooses. q goes back.",
@@ -1046,6 +1307,13 @@ function showHelp(): void {
       "The regular command-line interface still works for automation.",
     ].join("\n"),
   );
+}
+
+function writingModeLabel(writingMode: WritingMode | null): string {
+  if (writingMode === "human") return "Human draft";
+  if (writingMode === "section_assisted") return "Section-assisted";
+  if (writingMode === "ai_first_draft") return "AI first draft";
+  return "Not chosen";
 }
 
 function printPreview(markdown: string, maxLines: number): void {

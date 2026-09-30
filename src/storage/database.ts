@@ -1,6 +1,13 @@
 import { DatabaseSync } from "node:sqlite";
 import type { ForemArticle } from "../forem/types.js";
 
+export const writingModes = [
+  "human",
+  "section_assisted",
+  "ai_first_draft",
+] as const;
+export type WritingMode = (typeof writingModes)[number];
+
 export type StoredResearchArticle = {
   id: number;
   title: string;
@@ -21,6 +28,7 @@ export type StoredEditorialProject = {
   thesis: string;
   audience: string;
   status: string;
+  writingMode: WritingMode | null;
   workspacePath: string;
   remoteArticleId: number | null;
   lastRemoteEditedAt: string | null;
@@ -111,6 +119,9 @@ export class AgentDatabase {
         thesis TEXT NOT NULL,
         audience TEXT NOT NULL,
         status TEXT NOT NULL,
+        writing_mode TEXT CHECK (
+          writing_mode IN ('human', 'section_assisted', 'ai_first_draft')
+        ),
         workspace_path TEXT NOT NULL,
         remote_article_id INTEGER,
         last_remote_edited_at TEXT,
@@ -133,6 +144,18 @@ export class AgentDatabase {
       CREATE INDEX IF NOT EXISTS idx_editorial_projects_status
         ON editorial_projects(status);
     `);
+
+    const projectColumns = this.db
+      .prepare("PRAGMA table_info(editorial_projects)")
+      .all() as Array<{ name: string }>;
+    if (!projectColumns.some((column) => column.name === "writing_mode")) {
+      this.db.exec(`
+        ALTER TABLE editorial_projects
+        ADD COLUMN writing_mode TEXT CHECK (
+          writing_mode IN ('human', 'section_assisted', 'ai_first_draft')
+        );
+      `);
+    }
   }
 
   startResearchRun(source: string, query: unknown): number {
@@ -232,10 +255,11 @@ export class AgentDatabase {
         thesis,
         audience,
         status,
+        writing_mode,
         workspace_path,
         created_at,
         updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       input.id,
       input.slug,
@@ -243,6 +267,7 @@ export class AgentDatabase {
       input.thesis,
       input.audience,
       input.status,
+      null,
       input.workspacePath,
       now,
       now,
@@ -262,6 +287,7 @@ export class AgentDatabase {
         thesis,
         audience,
         status,
+        writing_mode,
         workspace_path,
         remote_article_id,
         last_remote_edited_at,
@@ -284,6 +310,7 @@ export class AgentDatabase {
         thesis,
         audience,
         status,
+        writing_mode,
         workspace_path,
         remote_article_id,
         last_remote_edited_at,
@@ -305,6 +332,30 @@ export class AgentDatabase {
       SET status = ?, updated_at = ?
       WHERE id = ? OR slug = ?
     `).run(status, new Date().toISOString(), reference, reference);
+
+    if (Number(result.changes) === 0) {
+      throw new Error(`Unknown editorial project: ${reference}`);
+    }
+
+    const updated = this.findEditorialProject(reference);
+    if (!updated) throw new Error("Failed to read updated editorial project.");
+    return updated;
+  }
+
+  setEditorialProjectWritingMode(
+    reference: string,
+    writingMode: WritingMode,
+  ): StoredEditorialProject {
+    const result = this.db.prepare(`
+      UPDATE editorial_projects
+      SET writing_mode = ?, updated_at = ?
+      WHERE id = ? OR slug = ?
+    `).run(
+      writingMode,
+      new Date().toISOString(),
+      reference,
+      reference,
+    );
 
     if (Number(result.changes) === 0) {
       throw new Error(`Unknown editorial project: ${reference}`);
@@ -464,6 +515,7 @@ function mapEditorialProject(
     thesis: String(row.thesis),
     audience: String(row.audience),
     status: String(row.status),
+    writingMode: parseWritingMode(row.writing_mode),
     workspacePath: String(row.workspace_path),
     remoteArticleId:
       row.remote_article_id === null || row.remote_article_id === undefined
@@ -477,4 +529,13 @@ function mapEditorialProject(
     createdAt: String(row.created_at),
     updatedAt: String(row.updated_at),
   };
+}
+
+function parseWritingMode(value: unknown): WritingMode | null {
+  if (value === null || value === undefined) return null;
+  const candidate = String(value);
+  if ((writingModes as readonly string[]).includes(candidate)) {
+    return candidate as WritingMode;
+  }
+  throw new Error(`Unknown stored writing mode: ${candidate}`);
 }

@@ -54,11 +54,13 @@ export async function ensureFirstRunOnboarding(
 
   const action = await selectMenu<WelcomeAction>({
     title: "Welcome to meldr",
-    subtitle: "A local-first editorial copilot for technical writers.",
+    subtitle: "A local-first, editing-first assistant for technical writers.",
     status: configured ? modelStatusLabel(initialConfig) : "AI not configured",
     body: [
+      "Meldr is an editor before it is a writer: use it to research, structure, review, proofread, and challenge your work.",
+      "It will not generate a full article unless you explicitly choose and confirm AI first draft mode for that project.",
       "Research and measurements stay inspectable before AI interpretation.",
-      "Drafts stay local, revisions are proposals, and meldr never publishes for you.",
+      "Your writing stays local, revisions are proposals, and meldr never publishes for you.",
       configured
         ? "An existing AI configuration was detected."
         : "First, choose the AI provider you want meldr to use.",

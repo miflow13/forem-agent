@@ -8,6 +8,7 @@ import { basename, resolve } from "node:path";
 import type { AppConfig } from "../config.js";
 import {
   extractEditorialNotes,
+  hasArticleBody,
   mergeEditorialNotes,
   sha256,
 } from "../editorial/article-files.js";
@@ -37,13 +38,6 @@ export async function runRevision(
   pass: RevisionPass,
   injectedModel?: StructuredTextModel,
 ): Promise<RevisionResult> {
-  const model = injectedModel ?? createConfiguredModel(config);
-  if (!model) {
-    throw new Error(
-      "Revision requires a configured model. Set OPENAI_API_KEY or inject a StructuredTextModel.",
-    );
-  }
-
   const database = new AgentDatabase(config.databasePath);
 
   try {
@@ -63,14 +57,26 @@ export async function runRevision(
     if (!existsSync(briefPath)) {
       throw new Error(`Project brief is missing: ${briefPath}`);
     }
-    if (!existsSync(draftPath)) {
+    if (!existsSync(draftPath) && !existsSync(workingPath)) {
       throw new Error(
-        `Project has no draft yet: ${draftPath}. Draft it before running revisions.`,
+        `Project has no draft yet and no working article: ${project.workspacePath}. Write or draft the article before running revisions.`,
       );
     }
 
     const sourcePath = existsSync(workingPath) ? workingPath : draftPath;
     const sourceMarkdown = readFileSync(sourcePath, "utf8");
+    if (!hasArticleBody(sourceMarkdown)) {
+      throw new Error(
+        `${basename(sourcePath)} has no article body yet. Write your draft before asking meldr to review it.`,
+      );
+    }
+
+    const model = injectedModel ?? createConfiguredModel(config);
+    if (!model) {
+      throw new Error(
+        "Revision requires a configured model. Set OPENAI_API_KEY or inject a StructuredTextModel.",
+      );
+    }
     const extracted = extractEditorialNotes(sourceMarkdown);
 
     let editorialNotesMarkdown = existsSync(editorialNotesPath)

@@ -32,6 +32,28 @@ test("draft rejects projects that have not been approved", async () => {
   }
 });
 
+test("draft requires explicit AI-first mode before any model call", async () => {
+  const fixture = createProjectFixture("approved");
+
+  try {
+    writeFileSync(
+      join(fixture.workspacePath, "brief.md"),
+      approvedBrief(fixture.id, fixture.slug),
+      "utf8",
+    );
+    const model = new FakeStructuredTextModel({ markdown: "Unused." });
+
+    await assert.rejects(
+      () => runDraft(fixture.config, fixture.slug, model),
+      /Choose AI first draft mode explicitly/,
+    );
+    assert.equal(model.requests.length, 0);
+    assert.equal(existsSync(join(fixture.workspacePath, "draft.md")), false);
+  } finally {
+    fixture.cleanup();
+  }
+});
+
 test("draft writes publishable article and editorial notes separately", async () => {
   const fixture = createProjectFixture("approved");
 
@@ -41,6 +63,13 @@ test("draft writes publishable article and editorial notes separately", async ()
       approvedBrief(fixture.id, fixture.slug),
       "utf8",
     );
+
+    const database = new AgentDatabase(fixture.config.databasePath);
+    database.setEditorialProjectWritingMode(
+      fixture.slug,
+      "ai_first_draft",
+    );
+    database.close();
 
     const model = new FakeStructuredTextModel({
       markdown: "Generated body from the approved brief.",

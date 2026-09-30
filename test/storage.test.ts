@@ -70,6 +70,61 @@ test("AgentDatabase keeps owner metric snapshots separate from public research",
   }
 });
 
+test("AgentDatabase additively migrates and persists editorial writing mode", () => {
+  const directory = mkdtempSync(join(tmpdir(), "forem-agent-mode-"));
+  const databasePath = join(directory, "legacy.db");
+
+  try {
+    const legacy = new DatabaseSync(databasePath);
+    legacy.exec(`
+      CREATE TABLE editorial_projects (
+        id TEXT PRIMARY KEY,
+        slug TEXT NOT NULL UNIQUE,
+        title TEXT NOT NULL,
+        thesis TEXT NOT NULL,
+        audience TEXT NOT NULL,
+        status TEXT NOT NULL,
+        workspace_path TEXT NOT NULL,
+        remote_article_id INTEGER,
+        last_remote_edited_at TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      INSERT INTO editorial_projects (
+        id, slug, title, thesis, audience, status, workspace_path,
+        created_at, updated_at
+      ) VALUES (
+        'legacy-id', 'legacy-project', 'Legacy Project', 'Thesis', 'Readers',
+        'approved', '/tmp/legacy-project', '2026-09-30T00:00:00Z',
+        '2026-09-30T00:00:00Z'
+      );
+    `);
+    legacy.close();
+
+    const database = new AgentDatabase(databasePath);
+    assert.equal(
+      database.findEditorialProject("legacy-project")?.writingMode,
+      null,
+    );
+
+    const updated = database.setEditorialProjectWritingMode(
+      "legacy-project",
+      "section_assisted",
+    );
+    assert.equal(updated.writingMode, "section_assisted");
+    database.close();
+
+    const reopened = new AgentDatabase(databasePath);
+    assert.equal(
+      reopened.findEditorialProject("legacy-project")?.writingMode,
+      "section_assisted",
+    );
+    reopened.close();
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 function article(reactions: number): ForemArticle {
   return {
     id: 101,

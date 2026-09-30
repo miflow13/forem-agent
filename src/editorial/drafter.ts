@@ -72,6 +72,63 @@ export type DraftProgressEvent = {
   heading: string;
 };
 
+export const sectionAssistanceTypes = [
+  "talking_points",
+  "starter",
+  "draft_section",
+] as const;
+export type SectionAssistanceType =
+  (typeof sectionAssistanceTypes)[number];
+
+export async function generateSectionAssistance(
+  model: StructuredTextModel,
+  brief: ParsedDraftBrief,
+  sectionNumber: number,
+  assistanceType: SectionAssistanceType,
+): Promise<{ heading: string; markdown: string; model: string }> {
+  const section = brief.outline[sectionNumber - 1];
+  if (!section) {
+    throw new Error(
+      `Brief has no section ${sectionNumber}. Choose a section from 1 to ${brief.outline.length}.`,
+    );
+  }
+
+  const actionInstruction =
+    assistanceType === "talking_points"
+      ? "Return concise Markdown bullet points the author can develop. Do not write finished section prose."
+      : assistanceType === "starter"
+        ? "Return a short opening passage that helps the author start. Do not draft the complete section."
+        : "Return a complete proposed section body for the author to review. Do not include the section heading.";
+
+  const result = await model.generate({
+    schemaName: `forem_section_${assistanceType}`,
+    jsonSchema: DRAFT_SECTION_JSON_SCHEMA,
+    parse: (value) => draftSectionSchema.parse(value),
+    instructions: [
+      "You are assisting with one explicitly selected section of a human-owned technical article.",
+      actionInstruction,
+      "Use only the approved brief, section intent, and listed evidence as direction.",
+      "Do not invent personal experiences, first-hand anecdotes, measurements, sources, citations, quotations, or verification results.",
+      "Do not strengthen claims marked for verification into facts.",
+      "The output is a proposal, not publish-ready prose, and will not be inserted without explicit human acceptance.",
+    ].join("\n"),
+    input: JSON.stringify({
+      evidence_type: "approved_section_assistance_v1",
+      assistance_type: assistanceType,
+      section_index: sectionNumber,
+      section_count: brief.outline.length,
+      section,
+      approved_brief_markdown: brief.rawMarkdown,
+    }),
+  });
+
+  return {
+    heading: section.heading,
+    markdown: result.data.markdown.trim(),
+    model: result.model,
+  };
+}
+
 export async function generateDraftSections(
   model: StructuredTextModel,
   brief: ParsedDraftBrief,
