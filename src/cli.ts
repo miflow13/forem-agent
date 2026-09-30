@@ -1,6 +1,8 @@
 #!/usr/bin/env node
+import { basename } from "node:path";
 import { Command, Option } from "commander";
 import { ensureHome, loadConfig, loadProjectEnv } from "./config.js";
+import { acceptRevision } from "./commands/accept.js";
 import { runAnalyze } from "./commands/analyze.js";
 import { runDraft } from "./commands/draft.js";
 import { runOpportunities } from "./commands/opportunities.js";
@@ -41,12 +43,13 @@ program
     [
       "",
       "Workflow:",
-      "  research → opportunities → plan → approve → draft → revise",
+      "  research → opportunities → plan → approve → draft → revise → accept",
       "",
       "Navigation:",
       "  forem-agent projects        list editorial projects",
       "  forem-agent status <slug>   show one project's state and next step",
       "  forem-agent revise <slug> --pass structure|voice|claim-check",
+      "  forem-agent accept <slug> <revision-file>",
       "",
       "Set MELDR_DEBUG=1 to show full stack traces for errors.",
     ].join("\n"),
@@ -362,9 +365,10 @@ program
     keyValue("Project", drafted.slug);
     keyValue("Model", drafted.model);
     keyValue("Draft", drafted.draftPath);
+    keyValue("Notes", drafted.editorialNotesPath);
 
     section("Next");
-    info("Edit draft.md directly. Meldr will not overwrite it.");
+    info("Edit draft.md directly. Editorial notes live separately and meldr will not overwrite either file.");
     console.log(
       style.dim(
         "Structure, claim-check, and voice revision passes are the next workflow slice.",
@@ -404,9 +408,52 @@ program
     section("Safety");
     console.log(
       style.dim(
-        "draft.md was not modified. Review the proposal before applying any changes.",
+        `${result.sourceArticle} was not modified. Review the proposal before applying any changes.`,
       ),
     );
+
+    if (pass !== "claim-check") {
+      section("Accept");
+      info(
+        command(
+          `forem-agent accept ${result.slug} ${basename(result.outputPath)}`,
+        ),
+      );
+    }
+  });
+
+program
+  .command("accept <project> <revision>")
+  .description("Promote a reviewed structure or voice proposal to working.md")
+  .action((project, revision) => {
+    const config = loadConfig();
+    ensureHome(config);
+
+    const accepted = acceptRevision(config, project, revision);
+
+    success(`Accepted ${accepted.pass} revision`);
+    keyValue("Working", accepted.workingPath);
+    keyValue("Notes", accepted.editorialNotesPath);
+    console.log(
+      style.dim(
+        "draft.md remains the immutable first-generation snapshot.",
+      ),
+    );
+
+    section("Next");
+    if (accepted.pass === "structure") {
+      info(
+        command(
+          `forem-agent revise ${accepted.slug} --pass voice`,
+        ),
+      );
+    } else {
+      info(
+        command(
+          `forem-agent revise ${accepted.slug} --pass claim-check`,
+        ),
+      );
+    }
   });
 
 program
@@ -437,6 +484,8 @@ program
       const files = [
         item.hasBrief ? "brief" : "no-brief",
         item.hasDraft ? "draft" : null,
+        item.hasWorking ? "working" : null,
+        item.hasEditorialNotes ? "notes" : null,
       ]
         .filter(Boolean)
         .join(" + ");
@@ -466,6 +515,11 @@ program
     keyValue("Stage", statusLabel(item.stage));
     keyValue("Brief", item.hasBrief ? item.briefPath : "missing");
     keyValue("Draft", item.hasDraft ? item.draftPath : "not created");
+    keyValue("Working", item.hasWorking ? item.workingPath : "not accepted yet");
+    keyValue(
+      "Notes",
+      item.hasEditorialNotes ? item.editorialNotesPath : "not created",
+    );
     keyValue("Updated", item.project.updatedAt);
 
     section("Next");
