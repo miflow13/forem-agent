@@ -13,6 +13,11 @@ export const foremUserSchema = z.object({
   profile_image_90: z.string().nullable().optional(),
 });
 
+const foremCountSchema = z
+  .number()
+  .int()
+  .transform((value) => Math.max(0, value));
+
 const foremArticleWireSchema = z.object({
   type_of: z.string().optional(),
   id: z.number().int(),
@@ -22,11 +27,11 @@ const foremArticleWireSchema = z.object({
   slug: z.string(),
   path: z.string().optional(),
   url: z.string().url(),
-  comments_count: z.number().int().nonnegative().default(0),
-  public_reactions_count: z.number().int().nonnegative().default(0),
+  comments_count: foremCountSchema.default(0),
+  public_reactions_count: foremCountSchema.default(0),
   collection_id: z.number().int().nullable().optional(),
   published_timestamp: z.string(),
-  positive_reactions_count: z.number().int().nonnegative().default(0),
+  positive_reactions_count: foremCountSchema.default(0),
   cover_image: z.string().nullable().optional(),
   social_image: z.string().nullable().optional(),
   canonical_url: z.string().nullable().optional(),
