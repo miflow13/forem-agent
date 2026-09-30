@@ -69,5 +69,6 @@ export function statusLabel(status: string): string {
   if (status === "approved") return style.green(status);
   if (status === "proposed") return style.yellow(status);
   if (status === "draft") return style.cyan(status);
+  if (status === "working") return style.magenta(status);
   return status;
 }
