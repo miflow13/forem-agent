@@ -65,9 +65,17 @@ export function parseDraftBrief(markdown: string): ParsedDraftBrief {
   };
 }
 
+export type DraftProgressEvent = {
+  phase: "section-start" | "section-complete";
+  index: number;
+  total: number;
+  heading: string;
+};
+
 export async function generateDraftSections(
   model: StructuredTextModel,
   brief: ParsedDraftBrief,
+  onProgress?: (event: DraftProgressEvent) => void,
 ): Promise<{
   sections: Array<{ heading: string; markdown: string }>;
   model: string;
@@ -76,6 +84,13 @@ export async function generateDraftSections(
   let modelName = "unknown";
 
   for (const [index, section] of brief.outline.entries()) {
+    onProgress?.({
+      phase: "section-start",
+      index: index + 1,
+      total: brief.outline.length,
+      heading: section.heading,
+    });
+
     const result = await model.generate({
       schemaName: "forem_draft_section",
       jsonSchema: DRAFT_SECTION_JSON_SCHEMA,
@@ -103,6 +118,13 @@ export async function generateDraftSections(
     sections.push({
       heading: section.heading,
       markdown: result.data.markdown.trim(),
+    });
+
+    onProgress?.({
+      phase: "section-complete",
+      index: index + 1,
+      total: brief.outline.length,
+      heading: section.heading,
     });
   }
 
