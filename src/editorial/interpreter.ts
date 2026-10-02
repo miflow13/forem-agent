@@ -54,7 +54,7 @@ export async function interpretArticleAnalysis(
   analysis: ArticleAnalysis,
 ): Promise<{ interpretation: ArticleInterpretation; model: string }> {
   const result = await model.generate({
-    schemaName: "forem_article_interpretation",
+    schemaName: "meldr_article_interpretation",
     jsonSchema: ARTICLE_INTERPRETATION_JSON_SCHEMA,
     parse: (value) => articleInterpretationSchema.parse(value),
     instructions: [

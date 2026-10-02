@@ -12,7 +12,7 @@ export function runOpportunities(
     const articles = database.listLatestResearchArticles();
     if (articles.length === 0) {
       throw new Error(
-        "No completed research data found. Run \"forem-agent research\" first.",
+        "No completed research data found. Run \"meldr research\" first.",
       );
     }
 

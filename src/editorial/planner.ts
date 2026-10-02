@@ -149,7 +149,7 @@ export async function generateEditorialBrief(
   };
 
   const result = await model.generate({
-    schemaName: "forem_editorial_brief",
+    schemaName: "meldr_editorial_brief",
     jsonSchema: BRIEF_JSON_SCHEMA,
     parse: (value) => editorialBriefSchema.parse(value),
     instructions: [
@@ -175,7 +175,7 @@ export function selectPlanEvidence(
 ): PlanEvidence {
   if (articles.length === 0) {
     throw new Error(
-      'No completed research data found. Run "forem-agent research" before planning.',
+      'No completed research data found. Run "meldr research" before planning.',
     );
   }
 

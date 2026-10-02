@@ -15,6 +15,7 @@ export type ModelProvider = (typeof modelProviders)[number];
 const envSchema = z.object({
   FOREM_BASE_URL: z.string().url().default("https://dev.to/api"),
   FOREM_API_KEY: z.string().min(1).optional(),
+  MELDR_WORKSPACE: z.string().min(1).optional(),
   FOREM_AGENT_WORKSPACE: z.string().min(1).optional(),
 
   MELDR_MODEL_PROVIDER: z.enum(modelProviders).optional(),
@@ -111,6 +112,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   const parsed = envSchema.parse({
     FOREM_BASE_URL: env.FOREM_BASE_URL,
     FOREM_API_KEY: env.FOREM_API_KEY || undefined,
+    MELDR_WORKSPACE: env.MELDR_WORKSPACE || undefined,
     FOREM_AGENT_WORKSPACE: env.FOREM_AGENT_WORKSPACE || undefined,
 
     MELDR_MODEL_PROVIDER: env.MELDR_MODEL_PROVIDER || undefined,
@@ -138,7 +140,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     homeDir,
     databasePath: resolve(homeDir, "forem-agent.db"),
     workspaceDir: resolve(
-      parsed.FOREM_AGENT_WORKSPACE ?? resolve(process.cwd(), "articles"),
+      parsed.MELDR_WORKSPACE ??
+        parsed.FOREM_AGENT_WORKSPACE ??
+        resolve(process.cwd(), "articles"),
     ),
     modelProvider: provider,
     modelApiKey: model.apiKey,

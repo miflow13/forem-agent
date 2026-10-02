@@ -1,12 +1,11 @@
 {
-  "name": "forem-agent",
+  "name": "meldr",
   "version": "0.1.0",
   "private": true,
-  "description": "Local-first editorial intelligence CLI for Forem/DEV.",
+  "description": "Local-first, editing-first assistant for technical writers.",
   "type": "module",
   "bin": {
-    "meldr": "./dist/cli.js",
-    "forem-agent": "./dist/cli.js"
+    "meldr": "./dist/cli.js"
   },
   "scripts": {
     "dev": "tsx src/cli.ts",
@@ -16,7 +15,7 @@
     "test": "node --import tsx --test test/*.test.ts"
   },
   "engines": {
-    "node": ">=22.5.0"
+    "node": ">=22.13.0"
   },
   "dependencies": {
     "commander": "^14.0.1",

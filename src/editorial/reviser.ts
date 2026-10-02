@@ -113,7 +113,7 @@ export async function runRevisionPass(
 > {
   if (pass === "claim-check") {
     const result = await model.generate({
-      schemaName: "forem_claim_review",
+      schemaName: "meldr_claim_review",
       jsonSchema: CLAIM_REVIEW_JSON_SCHEMA,
       parse: (value) => claimReviewSchema.parse(value),
       instructions: [
@@ -156,7 +156,7 @@ export async function runRevisionPass(
         ];
 
   const result = await model.generate({
-    schemaName: `forem_${pass}_revision`,
+    schemaName: `meldr_${pass}_revision`,
     jsonSchema: REWRITE_JSON_SCHEMA,
     parse: (value) => rewriteSchema.parse(value),
     instructions: [

@@ -12,7 +12,10 @@ import {
   type WorkspaceProject,
 } from "../editorial/workspace.js";
 import type { StructuredTextModel } from "../providers/structured-text-model.js";
-import { createConfiguredModel } from "../providers/configured-model.js";
+import {
+  createConfiguredModel,
+  missingModelError,
+} from "../providers/configured-model.js";
 import {
   AgentDatabase,
   type StoredEditorialProject,
@@ -32,9 +35,7 @@ export async function runPlan(
 ): Promise<PlanResult> {
   const model = injectedModel ?? createConfiguredModel(config);
   if (!model) {
-    throw new Error(
-      "Planning requires a configured AI provider. Run meldr and complete AI setup, or inject a StructuredTextModel.",
-    );
+    throw missingModelError("Planning");
   }
 
   const database = new AgentDatabase(config.databasePath);

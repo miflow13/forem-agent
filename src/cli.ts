@@ -33,7 +33,10 @@ import {
   writingModes,
   type WritingMode,
 } from "./storage/database.js";
-import { createConfiguredModel } from "./providers/configured-model.js";
+import {
+  createConfiguredModel,
+  missingModelError,
+} from "./providers/configured-model.js";
 import { runInteractive } from "./tui/app.js";
 import { pause } from "./tui/menu.js";
 import { runAiSettings } from "./tui/onboarding.js";
@@ -231,8 +234,8 @@ program
     if (options.interpret) {
       const model = createConfiguredModel(config);
       if (!model) {
-        throw new Error(
-          "Model interpretation requires a configured AI provider. Run meldr and complete AI setup. Deterministic analysis does not.",
+        throw missingModelError(
+          "Model interpretation (deterministic analysis does not)",
         );
       }
 
@@ -456,12 +459,10 @@ program
     keyValue("Notes", drafted.editorialNotesPath);
 
     section("Next");
-    info("Edit draft.md directly. Editorial notes live separately and meldr will not overwrite either file.");
-    console.log(
-      style.dim(
-        "Structure, claim-check, and voice revision passes are the next workflow slice.",
-      ),
+    info(
+      "draft.md is the untouched first-generation snapshot. Review its structure next:",
     );
+    console.log(`  ${command(`meldr revise ${drafted.slug} --pass structure`)}`);
   });
 
 program
@@ -714,17 +715,6 @@ if (process.argv.length <= 2) {
 
     console.error("");
     fail(message);
-
-    if (
-      message.includes("configured AI provider") ||
-      message.includes("No AI provider is configured")
-    ) {
-      console.error(
-        style.dim(
-          "Run meldr with no arguments to choose OpenAI, Claude, or a compatible custom provider.",
-        ),
-      );
-    }
 
     if (process.env.MELDR_DEBUG === "1") {
       console.error("");

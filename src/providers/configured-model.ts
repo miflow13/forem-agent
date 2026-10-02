@@ -31,6 +31,12 @@ export function createConfiguredModel(
   return null;
 }
 
+export function missingModelError(action: string): Error {
+  return new Error(
+    `${action} requires a configured AI provider. Run "meldr setup" to choose OpenAI, Claude, or a compatible custom provider.`,
+  );
+}
+
 export function configuredModelLabel(config: AppConfig): string {
   return modelStatusLabel(config);
 }
@@ -40,9 +46,7 @@ export async function verifyConfiguredModel(
 ): Promise<string> {
   const model = createConfiguredModel(config);
   if (!model) {
-    throw new Error(
-      "No AI provider is configured. Run meldr and complete AI setup first.",
-    );
+    throw missingModelError("The connection check");
   }
 
   const result = await model.generate({

@@ -16,7 +16,10 @@ import {
   parseDraftBrief,
   type SectionAssistanceType,
 } from "../editorial/drafter.js";
-import { createConfiguredModel } from "../providers/configured-model.js";
+import {
+  createConfiguredModel,
+  missingModelError,
+} from "../providers/configured-model.js";
 import type { StructuredTextModel } from "../providers/structured-text-model.js";
 import { AgentDatabase } from "../storage/database.js";
 
@@ -62,9 +65,7 @@ export async function runSectionAssistance(
     const brief = parseDraftBrief(readFileSync(briefPath, "utf8"));
     const model = injectedModel ?? createConfiguredModel(config);
     if (!model) {
-      throw new Error(
-        "Section assistance requires a configured AI provider.",
-      );
+      throw missingModelError("Section assistance");
     }
 
     const sourceMarkdown = readFileSync(workingPath, "utf8");

@@ -101,7 +101,7 @@ export async function generateSectionAssistance(
         : "Return a complete proposed section body for the author to review. Do not include the section heading.";
 
   const result = await model.generate({
-    schemaName: `forem_section_${assistanceType}`,
+    schemaName: `meldr_section_${assistanceType}`,
     jsonSchema: DRAFT_SECTION_JSON_SCHEMA,
     parse: (value) => draftSectionSchema.parse(value),
     instructions: [
@@ -149,7 +149,7 @@ export async function generateDraftSections(
     });
 
     const result = await model.generate({
-      schemaName: "forem_draft_section",
+      schemaName: "meldr_draft_section",
       jsonSchema: DRAFT_SECTION_JSON_SCHEMA,
       parse: (value) => draftSectionSchema.parse(value),
       instructions: [

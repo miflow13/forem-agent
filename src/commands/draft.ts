@@ -8,7 +8,10 @@ import {
   renderDraftMarkdown,
   type DraftProgressEvent,
 } from "../editorial/drafter.js";
-import { createConfiguredModel } from "../providers/configured-model.js";
+import {
+  createConfiguredModel,
+  missingModelError,
+} from "../providers/configured-model.js";
 import type { StructuredTextModel } from "../providers/structured-text-model.js";
 import { AgentDatabase } from "../storage/database.js";
 
@@ -68,9 +71,7 @@ export async function runDraft(
 
     const model = injectedModel ?? createConfiguredModel(config);
     if (!model) {
-      throw new Error(
-        "Drafting requires a configured model. Set OPENAI_API_KEY or inject a StructuredTextModel.",
-      );
+      throw missingModelError("Drafting");
     }
 
     const brief = parseDraftBrief(readFileSync(briefPath, "utf8"));

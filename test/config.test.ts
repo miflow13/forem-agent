@@ -144,6 +144,20 @@ test("loadConfig keeps the database and config file under meldr home", () => {
   );
 });
 
+test("MELDR_WORKSPACE wins over the legacy workspace variable", () => {
+  assert.equal(
+    loadConfig({ FOREM_AGENT_WORKSPACE: "/legacy-articles" }).workspaceDir,
+    resolve("/legacy-articles"),
+  );
+  assert.equal(
+    loadConfig({
+      MELDR_WORKSPACE: "/articles",
+      FOREM_AGENT_WORKSPACE: "/legacy-articles",
+    }).workspaceDir,
+    resolve("/articles"),
+  );
+});
+
 test("ensureHome creates a private home without creating the article workspace", () => {
   const directory = mkdtempSync(resolve(tmpdir(), "meldr-home-"));
 

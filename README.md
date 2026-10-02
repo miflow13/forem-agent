@@ -67,7 +67,8 @@ publication.
 
 ## Requirements
 
-Node.js 22.5+ (the project uses Node's built-in `node:sqlite` module).
+Node.js 22.13+ (the project uses Node's built-in `node:sqlite` module, which
+needs a command-line flag on earlier 22.x releases).
 
 ## Setup
 
@@ -103,8 +104,7 @@ meldr
 ```
 
 You can rerun provider setup at any time with `meldr setup` or choose
-**AI settings** inside the TUI. The old `forem-agent` executable remains as a
-compatibility alias.
+**AI settings** inside the TUI.
 
 ### Where meldr keeps things
 
@@ -121,7 +121,7 @@ supported, the directory is created with mode `0700` and `config.env` with
 `0600`.
 
 Editable article projects are written to `./articles` unless
-`FOREM_AGENT_WORKSPACE` is set. The folder is created when you create your
+`MELDR_WORKSPACE` is set (the older `FOREM_AGENT_WORKSPACE` name still works). The folder is created when you create your
 first project, not every time meldr runs.
 
 **Upgrading from an earlier version:** meldr no longer reads `.env` or

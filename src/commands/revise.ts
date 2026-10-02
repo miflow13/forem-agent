@@ -18,7 +18,10 @@ import {
   runRevisionPass,
   type RevisionPass,
 } from "../editorial/reviser.js";
-import { createConfiguredModel } from "../providers/configured-model.js";
+import {
+  createConfiguredModel,
+  missingModelError,
+} from "../providers/configured-model.js";
 import type { StructuredTextModel } from "../providers/structured-text-model.js";
 import { AgentDatabase } from "../storage/database.js";
 
@@ -73,9 +76,7 @@ export async function runRevision(
 
     const model = injectedModel ?? createConfiguredModel(config);
     if (!model) {
-      throw new Error(
-        "Revision requires a configured model. Set OPENAI_API_KEY or inject a StructuredTextModel.",
-      );
+      throw missingModelError("Revision");
     }
     const extracted = extractEditorialNotes(sourceMarkdown);
 
