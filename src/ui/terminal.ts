@@ -82,6 +82,23 @@ export function divider(): void {
   console.log(style.dim("─".repeat(Math.min(process.stdout.columns ?? 72, 88))));
 }
 
+// fetch() reports network failures as a bare "fetch failed" and puts the
+// useful part (e.g. "connect ECONNREFUSED 127.0.0.1:443") in error.cause.
+export function describeError(error: unknown): string {
+  if (!(error instanceof Error)) return String(error);
+
+  const cause = error.cause;
+  const detail =
+    cause instanceof Error
+      ? cause.message ||
+        String((cause as { code?: unknown }).code ?? "")
+      : "";
+
+  return detail && !error.message.includes(detail)
+    ? `${error.message} (${detail})`
+    : error.message;
+}
+
 export function truncate(value: string, width: number): string {
   if (value.length <= width) return value;
   if (width <= 1) return "…";

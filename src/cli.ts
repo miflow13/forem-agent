@@ -44,6 +44,7 @@ import {
   brand,
   bullet,
   command,
+  describeError,
   divider,
   fail,
   info,
@@ -692,8 +693,7 @@ if (process.argv.length <= 2) {
     }
     await runInteractive(config);
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : String(error);
+    const message = describeError(error);
     console.error("");
     fail(message);
     console.error(
@@ -710,8 +710,7 @@ if (process.argv.length <= 2) {
   try {
     await program.parseAsync(process.argv);
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : String(error);
+    const message = describeError(error);
 
     console.error("");
     fail(message);

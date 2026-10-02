@@ -37,6 +37,7 @@ import {
 } from "./onboarding.js";
 import {
   bullet,
+  describeError,
   divider,
   info,
   keyValue,
@@ -150,44 +151,48 @@ export async function runInteractive(initialConfig: AppConfig): Promise<void> {
       return;
     }
 
-    if (action === "continue" && recent) {
-      await projectScreen(config, recent.project.slug);
-      continue;
-    }
+    try {
+      if (action === "continue" && recent) {
+        await projectScreen(config, recent.project.slug);
+        continue;
+      }
 
-    if (action === "projects") {
-      await projectsScreen(config);
-      continue;
-    }
+      if (action === "projects") {
+        await projectsScreen(config);
+        continue;
+      }
 
-    if (action === "new") {
-      await startArticleFlow(config);
-      continue;
-    }
+      if (action === "new") {
+        await startArticleFlow(config);
+        continue;
+      }
 
-    if (action === "research") {
-      await researchFlow(config);
-      continue;
-    }
+      if (action === "research") {
+        await researchFlow(config);
+        continue;
+      }
 
-    if (action === "opportunities") {
-      await opportunitiesFlow(config);
-      continue;
-    }
+      if (action === "opportunities") {
+        await opportunitiesFlow(config);
+        continue;
+      }
 
-    if (action === "analyze") {
-      await analyzeFlow(config);
-      continue;
-    }
+      if (action === "analyze") {
+        await analyzeFlow(config);
+        continue;
+      }
 
-    if (action === "settings") {
-      config = await runAiSettings(config);
-      continue;
-    }
+      if (action === "settings") {
+        config = await runAiSettings(config);
+        continue;
+      }
 
-    if (action === "help") {
-      showHelp();
-      await pause();
+      if (action === "help") {
+        showHelp();
+        await pause();
+      }
+    } catch (error) {
+      await showActionError(error);
     }
   }
 }
@@ -253,85 +258,89 @@ async function projectScreen(
 
     if (!action || action === "back") return;
 
-    if (action === "approve") {
+    try {
+      if (action === "approve") {
+        if (
+          await confirm(
+            "Approve this brief and choose how you want to write from it?",
+          )
+        ) {
+          const approved = approvePlan(config, project.project.slug);
+          clearScreen();
+          success("Brief approved");
+          keyValue("Project", approved.slug);
+          console.log("");
+          console.log(
+            style.dim(
+              "You can still edit brief.md. Next, choose whether you will write, work section by section, or explicitly request an AI first draft.",
+            ),
+          );
+          await pause();
+        }
+        continue;
+      }
+
+      if (action === "choose-mode") {
+        await chooseWritingModeFlow(config, project);
+        continue;
+      }
+
+      if (action === "draft") {
+        await draftFlow(config, project);
+        continue;
+      }
+
+      if (action === "section-assist") {
+        await sectionAssistedFlow(config, project);
+        continue;
+      }
+
       if (
-        await confirm(
-          "Approve this brief and choose how you want to write from it?",
-        )
+        action === "structure" ||
+        action === "voice" ||
+        action === "claim-check"
       ) {
-        const approved = approvePlan(config, project.project.slug);
+        await revisionFlow(config, project, action);
+        continue;
+      }
+
+      if (action === "accept-latest" && latest) {
+        await acceptFlow(config, project, latest);
+        continue;
+      }
+
+      if (action === "claim-report" && claimReport) {
         clearScreen();
-        success("Brief approved");
-        keyValue("Project", approved.slug);
-        console.log("");
-        console.log(
-          style.dim(
-            "You can still edit brief.md. Next, choose whether you will write, work section by section, or explicitly request an AI first draft.",
-          ),
-        );
+        section("Latest claim report");
+        showClaimReportCompact(claimReport);
+        await pause();
+        continue;
+      }
+
+      if (action === "preview") {
+        showArticlePreview(project);
+        await pause();
+        continue;
+      }
+
+      if (action === "edit") {
+        openCurrentFile(project);
+        await pause();
+        continue;
+      }
+
+      if (action === "notes") {
+        showNotesPreview(project);
+        await pause();
+        continue;
+      }
+
+      if (action === "details") {
+        showProjectDetails(project);
         await pause();
       }
-      continue;
-    }
-
-    if (action === "choose-mode") {
-      await chooseWritingModeFlow(config, project);
-      continue;
-    }
-
-    if (action === "draft") {
-      await draftFlow(config, project);
-      continue;
-    }
-
-    if (action === "section-assist") {
-      await sectionAssistedFlow(config, project);
-      continue;
-    }
-
-    if (
-      action === "structure" ||
-      action === "voice" ||
-      action === "claim-check"
-    ) {
-      await revisionFlow(config, project, action);
-      continue;
-    }
-
-    if (action === "accept-latest" && latest) {
-      await acceptFlow(config, project, latest);
-      continue;
-    }
-
-    if (action === "claim-report" && claimReport) {
-      clearScreen();
-      section("Latest claim report");
-      showClaimReportCompact(claimReport);
-      await pause();
-      continue;
-    }
-
-    if (action === "preview") {
-      showArticlePreview(project);
-      await pause();
-      continue;
-    }
-
-    if (action === "edit") {
-      openCurrentFile(project);
-      await pause();
-      continue;
-    }
-
-    if (action === "notes") {
-      showNotesPreview(project);
-      await pause();
-      continue;
-    }
-
-    if (action === "details") {
-      showProjectDetails(project);
-      await pause();
+    } catch (error) {
+      await showActionError(error);
     }
   }
 }
@@ -1346,5 +1355,17 @@ function round(value: number): number {
 }
 
 function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+  return describeError(error);
+}
+
+// A failed step (network error, provider error, missing file) returns to the
+// menu it was started from instead of exiting the whole interface.
+async function showActionError(error: unknown): Promise<void> {
+  console.log("");
+  warn(describeError(error));
+  if (process.env.MELDR_DEBUG === "1") {
+    console.error(error);
+  }
+  console.log("");
+  await pause("Press Enter to return to the menu");
 }
