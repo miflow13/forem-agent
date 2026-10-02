@@ -1,15 +1,26 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import test from "node:test";
 import {
+  ensureHome,
+  legacyLocalStateNotices,
   loadConfig,
-  loadProjectEnv,
+  loadUserConfig,
   modelStatusLabel,
+  resolveMeldrHome,
+  userConfigPath,
 } from "../src/config.js";
 
-test("project .env populates legacy OpenAI configuration", () => {
+test("user config file populates legacy OpenAI configuration", () => {
   const directory = mkdtempSync(resolve(tmpdir(), "forem-agent-config-"));
   const envPath = resolve(directory, ".env");
   const previousApiKey = process.env.OPENAI_API_KEY;
@@ -18,7 +29,7 @@ test("project .env populates legacy OpenAI configuration", () => {
     delete process.env.OPENAI_API_KEY;
     writeFileSync(envPath, "OPENAI_API_KEY=test-key-from-dotenv\n");
 
-    assert.equal(loadProjectEnv(envPath), true);
+    assert.equal(loadUserConfig(envPath), true);
 
     const config = loadConfig();
     assert.equal(config.modelProvider, "openai");
@@ -35,7 +46,7 @@ test("project .env populates legacy OpenAI configuration", () => {
   }
 });
 
-test("existing process environment takes precedence over .env", () => {
+test("existing process environment takes precedence over the config file", () => {
   const directory = mkdtempSync(resolve(tmpdir(), "forem-agent-config-"));
   const envPath = resolve(directory, ".env");
   const previousApiKey = process.env.OPENAI_API_KEY;
@@ -44,7 +55,7 @@ test("existing process environment takes precedence over .env", () => {
     process.env.OPENAI_API_KEY = "existing-process-key";
     writeFileSync(envPath, "OPENAI_API_KEY=file-key\n");
 
-    loadProjectEnv(envPath);
+    loadUserConfig(envPath);
     assert.equal(loadConfig().modelApiKey, "existing-process-key");
   } finally {
     if (previousApiKey === undefined) {
@@ -85,4 +96,145 @@ test("explicit meldr provider settings override provider-specific fallback", () 
   assert.equal(config.modelApiKey, "meldr-key");
   assert.equal(config.modelName, "claude-opus-5");
   assert.equal(config.modelBaseUrl, "https://api.anthropic.com/v1");
+});
+
+test("meldr home is per-user and never derived from the working directory", () => {
+  const userHome = "/home/writer";
+
+  assert.equal(
+    resolveMeldrHome({}, userHome),
+    resolve(userHome, ".config", "meldr"),
+  );
+  assert.equal(
+    resolveMeldrHome({ XDG_CONFIG_HOME: "/xdg" }, userHome),
+    resolve("/xdg", "meldr"),
+  );
+  assert.equal(
+    resolveMeldrHome({ XDG_CONFIG_HOME: "relative/xdg" }, userHome),
+    resolve(userHome, ".config", "meldr"),
+    "relative XDG_CONFIG_HOME is ignored per the XDG spec",
+  );
+  assert.equal(
+    resolveMeldrHome(
+      { FOREM_AGENT_HOME: "/legacy", XDG_CONFIG_HOME: "/xdg" },
+      userHome,
+    ),
+    resolve("/legacy"),
+  );
+  assert.equal(
+    resolveMeldrHome(
+      { MELDR_HOME: "/explicit", FOREM_AGENT_HOME: "/legacy" },
+      userHome,
+    ),
+    resolve("/explicit"),
+  );
+});
+
+test("loadConfig keeps the database and config file under meldr home", () => {
+  const config = loadConfig({ MELDR_HOME: "/state/meldr" });
+
+  assert.equal(config.homeDir, resolve("/state/meldr"));
+  assert.equal(
+    config.databasePath,
+    resolve("/state/meldr", "forem-agent.db"),
+  );
+  assert.equal(
+    userConfigPath(config.homeDir),
+    resolve("/state/meldr", "config.env"),
+  );
+});
+
+test("ensureHome creates a private home without creating the article workspace", () => {
+  const directory = mkdtempSync(resolve(tmpdir(), "meldr-home-"));
+
+  try {
+    const config = loadConfig({
+      MELDR_HOME: resolve(directory, "home"),
+      FOREM_AGENT_WORKSPACE: resolve(directory, "articles"),
+    });
+
+    ensureHome(config);
+
+    assert.equal(existsSync(config.homeDir), true);
+    assert.equal(existsSync(config.workspaceDir), false);
+    if (process.platform !== "win32") {
+      assert.equal(statSync(config.homeDir).mode & 0o777, 0o700);
+    }
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("legacy working-directory state is reported, not silently read", () => {
+  const directory = mkdtempSync(resolve(tmpdir(), "meldr-legacy-"));
+  const cwd = resolve(directory, "repo");
+  const home = resolve(directory, "home");
+
+  try {
+    mkdirSync(resolve(cwd, ".forem-agent"), { recursive: true });
+    mkdirSync(home, { recursive: true });
+
+    assert.deepEqual(legacyLocalStateNotices(cwd, home), []);
+
+    writeFileSync(resolve(cwd, ".forem-agent", "forem-agent.db"), "");
+    writeFileSync(
+      resolve(cwd, ".env"),
+      'MELDR_MODEL_PROVIDER="openai"\nMELDR_MODEL_API_KEY="secret"\n',
+    );
+
+    const notices = legacyLocalStateNotices(cwd, home);
+    assert.equal(notices.length, 2);
+    assert.match(notices[0] ?? "", /MELDR_HOME=/);
+    assert.match(notices[1] ?? "", /meldr setup/);
+    assert.doesNotMatch(notices.join("\n"), /secret/);
+
+    // Pointing MELDR_HOME at the legacy folder is a valid way to keep using it.
+    assert.equal(
+      legacyLocalStateNotices(cwd, resolve(cwd, ".forem-agent")).length,
+      1,
+    );
+
+    // A new, empty database in home must not hide the projects notice.
+    writeFileSync(resolve(home, "forem-agent.db"), "");
+    assert.equal(legacyLocalStateNotices(cwd, home).length, 2);
+
+    // Once migrated, the notices disappear.
+    rmSync(resolve(cwd, ".forem-agent", "forem-agent.db"));
+    writeFileSync(userConfigPath(home), "");
+    assert.deepEqual(legacyLocalStateNotices(cwd, home), []);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("an unreadable .env in the working directory does not stop meldr", () => {
+  const directory = mkdtempSync(resolve(tmpdir(), "meldr-unreadable-"));
+
+  try {
+    // A directory named .env makes readFileSync throw EISDIR on every platform.
+    mkdirSync(resolve(directory, ".env"));
+    assert.deepEqual(
+      legacyLocalStateNotices(directory, resolve(directory, "home")),
+      [],
+    );
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("an unrelated project .env does not trigger a meldr notice", () => {
+  const directory = mkdtempSync(resolve(tmpdir(), "meldr-unrelated-"));
+
+  try {
+    writeFileSync(
+      resolve(directory, ".env"),
+      "OPENAI_API_KEY=someone-elses-project-key\n",
+    );
+    assert.deepEqual(
+      legacyLocalStateNotices(directory, resolve(directory, "home")),
+      [],
+    );
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
 });

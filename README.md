@@ -54,7 +54,7 @@ publication.
 - AI-first creation writes an immutable `draft.md` article snapshot plus separate `editorial-notes.md`
 - first-run onboarding that explains meldr before asking the writer to choose an AI provider
 - OpenAI, Claude/Anthropic, and custom OpenAI-Responses-compatible provider setup
-- masked API-key entry, local gitignored `.env` persistence, and a small connection check before entering the app
+- masked API-key entry, a private per-user config file, and a small connection check before entering the app
 - beginner-friendly interactive terminal UI with arrow-key navigation, AI/model status, obvious recommended next steps, inline revision acceptance, file previews, and editor launching
 - in-app **AI settings** for changing provider, model, or API key later
 - polished scripted CLI with progress output, concise errors, `projects`/`status` navigation, and `NO_COLOR` support
@@ -106,10 +106,29 @@ You can rerun provider setup at any time with `meldr setup` or choose
 **AI settings** inside the TUI. The old `forem-agent` executable remains as a
 compatibility alias.
 
-Local state is written to `.forem-agent/forem-agent.db`. Editable article
-projects are written to `./articles` unless `FOREM_AGENT_WORKSPACE` is set.
-The generated `.env` is local and gitignored. On filesystems that support
-POSIX permissions, meldr restricts it to mode `0600`.
+### Where meldr keeps things
+
+Settings, secrets, and local state live in one per-user directory, never in
+the folder you run meldr from:
+
+| Platform default | Override |
+|---|---|
+| `$XDG_CONFIG_HOME/meldr`, else `~/.config/meldr` | `MELDR_HOME` (environment only) |
+
+That directory holds `config.env` (AI provider, model, and API key), the
+SQLite database, and the onboarding marker. Where POSIX permissions are
+supported, the directory is created with mode `0700` and `config.env` with
+`0600`.
+
+Editable article projects are written to `./articles` unless
+`FOREM_AGENT_WORKSPACE` is set. The folder is created when you create your
+first project, not every time meldr runs.
+
+**Upgrading from an earlier version:** meldr no longer reads `.env` or
+`.forem-agent/` from the current directory. If it finds either, it prints a
+notice with the exact path. Run `meldr setup` to save your AI settings in the
+new location, and move the old `.forem-agent/` contents into your meldr home
+(or set `MELDR_HOME` to that folder) to keep your projects.
 
 ## AI providers
 
@@ -120,8 +139,10 @@ The guided setup currently supports:
   `claude-sonnet-5`.
 - **Custom OpenAI-compatible** endpoints that implement the Responses API.
 
-Advanced users can skip the wizard and configure `.env` manually. The
-provider-neutral variables are:
+Advanced users can skip the wizard and either export environment variables or
+write them to `config.env` in the meldr home directory (see
+[`config.env.example`](config.env.example)). The provider-neutral variables
+are:
 
 ```bash
 MELDR_MODEL_PROVIDER=openai
@@ -133,7 +154,7 @@ MELDR_MODEL_BASE_URL=https://api.openai.com/v1
 Existing `OPENAI_API_KEY` / `OPENAI_MODEL` and
 `ANTHROPIC_API_KEY` / `ANTHROPIC_MODEL` setups are still recognized when an
 explicit `MELDR_MODEL_PROVIDER` is not configured. Process environment
-variables keep precedence over values loaded from `.env`.
+variables keep precedence over values loaded from `config.env`.
 
 ## Interactive mode
 
@@ -352,7 +373,7 @@ will include remote timestamp conflict checks.
 
 ## Security invariants
 
-- Forem and model API keys stay in process memory and the local gitignored `.env` configuration file.
+- Forem and model API keys stay in process memory and the private per-user `config.env` file; meldr never writes secrets into the directory it is run from.
 - Interactive API-key entry is masked.
 - The onboarding connection check never places the API key in the prompt body.
 - Public Forem requests do not carry the Forem API key.

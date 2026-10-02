@@ -9,7 +9,7 @@ import {
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import test from "node:test";
-import { loadConfig, loadProjectEnv } from "../src/config.js";
+import { loadConfig, loadUserConfig } from "../src/config.js";
 import {
   saveModelSetup,
   upsertEnvValues,
@@ -91,7 +91,7 @@ test("saveModelSetup writes local config without logging or touching unrelated v
     delete process.env.MELDR_MODEL;
     delete process.env.MELDR_MODEL_BASE_URL;
 
-    assert.equal(loadProjectEnv(envPath), true);
+    assert.equal(loadUserConfig(envPath), true);
     const reloaded = loadConfig();
     assert.equal(reloaded.modelProvider, "openai");
     assert.equal(reloaded.modelApiKey, "secret-model-key");
@@ -113,3 +113,37 @@ function restore(key: string, value: string | undefined): void {
     process.env[key] = value;
   }
 }
+
+test("saveModelSetup creates a private meldr home when it does not exist yet", () => {
+  const directory = mkdtempSync(resolve(tmpdir(), "meldr-onboarding-"));
+  const home = resolve(directory, "fresh", "meldr");
+  const envPath = resolve(home, "config.env");
+
+  const previous = {
+    provider: process.env.MELDR_MODEL_PROVIDER,
+    apiKey: process.env.MELDR_MODEL_API_KEY,
+    model: process.env.MELDR_MODEL,
+    baseUrl: process.env.MELDR_MODEL_BASE_URL,
+  };
+
+  try {
+    saveModelSetup(envPath, {
+      provider: "anthropic",
+      apiKey: "secret-model-key",
+      model: "claude-sonnet-5",
+      baseUrl: "https://api.anthropic.com/v1",
+    });
+
+    assert.match(readFileSync(envPath, "utf8"), /MELDR_MODEL_PROVIDER="anthropic"/);
+    if (process.platform !== "win32") {
+      assert.equal(statSync(home).mode & 0o777, 0o700);
+      assert.equal(statSync(envPath).mode & 0o777, 0o600);
+    }
+  } finally {
+    restore("MELDR_MODEL_PROVIDER", previous.provider);
+    restore("MELDR_MODEL_API_KEY", previous.apiKey);
+    restore("MELDR_MODEL", previous.model);
+    restore("MELDR_MODEL_BASE_URL", previous.baseUrl);
+    rmSync(directory, { recursive: true, force: true });
+  }
+});

@@ -1,11 +1,14 @@
 #!/usr/bin/env node
+import { mkdirSync } from "node:fs";
 import { basename } from "node:path";
 import { Command, Option } from "commander";
 import {
   ensureHome,
+  legacyLocalStateNotices,
   loadConfig,
-  loadProjectEnv,
+  loadUserConfig,
   modelStatusLabel,
+  resolveMeldrHome,
 } from "./config.js";
 import { acceptRevision } from "./commands/accept.js";
 import { runAnalyze } from "./commands/analyze.js";
@@ -32,6 +35,7 @@ import {
 } from "./storage/database.js";
 import { createConfiguredModel } from "./providers/configured-model.js";
 import { runInteractive } from "./tui/app.js";
+import { pause } from "./tui/menu.js";
 import { runAiSettings } from "./tui/onboarding.js";
 import {
   brand,
@@ -49,7 +53,11 @@ import {
   warn,
 } from "./ui/terminal.js";
 
-loadProjectEnv();
+loadUserConfig();
+const legacyNotices = legacyLocalStateNotices(
+  process.cwd(),
+  resolveMeldrHome(),
+);
 
 const program = new Command();
 
@@ -84,6 +92,7 @@ program
   .action(async () => {
     const config = loadConfig();
     ensureHome(config);
+    mkdirSync(config.workspaceDir, { recursive: true });
 
     const { AgentDatabase } = await import("./storage/database.js");
     const database = new AgentDatabase(config.databasePath);
@@ -675,6 +684,11 @@ if (process.argv.length <= 2) {
   try {
     const config = loadConfig();
     ensureHome(config);
+    if (legacyNotices.length > 0 && process.stdin.isTTY) {
+      for (const notice of legacyNotices) warn(notice);
+      console.log("");
+      await pause();
+    }
     await runInteractive(config);
   } catch (error) {
     const message =
@@ -687,6 +701,11 @@ if (process.argv.length <= 2) {
     process.exitCode = 1;
   }
 } else {
+  // stderr keeps machine-readable stdout (e.g. --format json) clean.
+  for (const notice of legacyNotices) {
+    console.error(`${style.yellow("!")} ${notice}`);
+  }
+
   try {
     await program.parseAsync(process.argv);
   } catch (error) {

@@ -1,6 +1,6 @@
-import { existsSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { resolve } from "node:path";
+import { isAbsolute, resolve } from "node:path";
 import { loadEnvFile } from "node:process";
 import { z } from "zod";
 
@@ -15,7 +15,6 @@ export type ModelProvider = (typeof modelProviders)[number];
 const envSchema = z.object({
   FOREM_BASE_URL: z.string().url().default("https://dev.to/api"),
   FOREM_API_KEY: z.string().min(1).optional(),
-  FOREM_AGENT_HOME: z.string().min(1).optional(),
   FOREM_AGENT_WORKSPACE: z.string().min(1).optional(),
 
   MELDR_MODEL_PROVIDER: z.enum(modelProviders).optional(),
@@ -44,19 +43,74 @@ export type AppConfig = {
   modelBaseUrl?: string;
 };
 
-export function loadProjectEnv(
-  envPath: string = resolve(process.cwd(), ".env"),
+// meldr state and secrets live in one per-user directory, never in the
+// directory meldr happens to be run from. MELDR_HOME must be set in the
+// process environment; setting it inside config.env has no effect on where
+// config.env itself is read from.
+export function resolveMeldrHome(
+  env: NodeJS.ProcessEnv = process.env,
+  userHome: string = homedir(),
+): string {
+  const explicit = env.MELDR_HOME || env.FOREM_AGENT_HOME;
+  if (explicit) return resolve(explicit);
+
+  // The XDG spec says relative XDG_CONFIG_HOME values must be ignored.
+  const xdg = env.XDG_CONFIG_HOME;
+  const base = xdg && isAbsolute(xdg) ? xdg : resolve(userHome, ".config");
+  return resolve(base, "meldr");
+}
+
+export function userConfigPath(homeDir: string): string {
+  return resolve(homeDir, "config.env");
+}
+
+export function loadUserConfig(
+  envPath: string = userConfigPath(resolveMeldrHome()),
 ): boolean {
   if (!existsSync(envPath)) return false;
   loadEnvFile(envPath);
   return true;
 }
 
+// Older versions kept state in ./.forem-agent and AI settings in ./.env.
+// Both are no longer read; point the writer at them instead of silently
+// starting over.
+export function legacyLocalStateNotices(
+  cwd: string,
+  homeDir: string,
+): string[] {
+  const notices: string[] = [];
+  const legacyHome = resolve(cwd, ".forem-agent");
+
+  // Keep reporting until the old database is moved: the first command run
+  // creates a new, empty database in homeDir, so "new home has no database"
+  // would hide this notice after a single run.
+  if (
+    legacyHome !== homeDir &&
+    existsSync(resolve(legacyHome, "forem-agent.db"))
+  ) {
+    notices.push(
+      `Found projects from an older meldr in ${legacyHome}. meldr now keeps state in ${homeDir}. Move that folder's contents there, or set MELDR_HOME=${legacyHome}.`,
+    );
+  }
+
+  const legacyEnv = resolve(cwd, ".env");
+  if (
+    !existsSync(userConfigPath(homeDir)) &&
+    fileMentionsMeldrSettings(legacyEnv)
+  ) {
+    notices.push(
+      `Found meldr AI settings in ${legacyEnv}. meldr no longer reads .env from the current directory. Run "meldr setup" to save them to ${userConfigPath(homeDir)}, then remove them from ${legacyEnv}.`,
+    );
+  }
+
+  return notices;
+}
+
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   const parsed = envSchema.parse({
     FOREM_BASE_URL: env.FOREM_BASE_URL,
     FOREM_API_KEY: env.FOREM_API_KEY || undefined,
-    FOREM_AGENT_HOME: env.FOREM_AGENT_HOME || undefined,
     FOREM_AGENT_WORKSPACE: env.FOREM_AGENT_WORKSPACE || undefined,
 
     MELDR_MODEL_PROVIDER: env.MELDR_MODEL_PROVIDER || undefined,
@@ -73,9 +127,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     ANTHROPIC_BASE_URL: env.ANTHROPIC_BASE_URL,
   });
 
-  const homeDir = resolve(
-    parsed.FOREM_AGENT_HOME ?? resolve(process.cwd(), ".forem-agent"),
-  );
+  const homeDir = resolveMeldrHome(env);
 
   const provider = resolveProvider(parsed);
   const model = resolveModelSettings(parsed, provider);
@@ -95,9 +147,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   };
 }
 
+// Only the private state directory is created eagerly. The article
+// workspace is created when a project is first written, so running meldr in
+// an arbitrary directory does not leave an empty articles/ folder behind.
 export function ensureHome(config: AppConfig): void {
-  mkdirSync(config.homeDir, { recursive: true });
-  mkdirSync(config.workspaceDir, { recursive: true });
+  mkdirSync(config.homeDir, { recursive: true, mode: 0o700 });
 }
 
 export function isModelConfigured(config: AppConfig): boolean {
@@ -123,9 +177,14 @@ export function modelStatusLabel(config: AppConfig): string {
   return `${modelProviderLabel(config.modelProvider)} · ${config.modelName}`;
 }
 
-// Exported only for diagnostics/tests; never used as a persistence source.
-export function defaultGlobalHome(): string {
-  return resolve(homedir(), ".forem-agent");
+// Best effort: an unreadable .env in someone else's project must never stop
+// meldr from starting.
+function fileMentionsMeldrSettings(path: string): boolean {
+  try {
+    return /^MELDR_MODEL_/m.test(readFileSync(path, "utf8"));
+  } catch {
+    return false;
+  }
 }
 
 type ParsedEnv = z.infer<typeof envSchema>;

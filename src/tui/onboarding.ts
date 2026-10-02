@@ -1,15 +1,17 @@
 import {
   chmodSync,
   existsSync,
+  mkdirSync,
   readFileSync,
   writeFileSync,
 } from "node:fs";
-import { resolve } from "node:path";
+import { dirname, resolve } from "node:path";
 import {
   isModelConfigured,
   loadConfig,
   modelProviderLabel,
   modelStatusLabel,
+  userConfigPath,
   type AppConfig,
   type ModelProvider,
 } from "../config.js";
@@ -126,6 +128,8 @@ export function saveModelSetup(
     MELDR_MODEL: setup.model,
     MELDR_MODEL_BASE_URL: setup.baseUrl.replace(/\/$/, ""),
   };
+
+  mkdirSync(dirname(envPath), { recursive: true, mode: 0o700 });
 
   const existing = existsSync(envPath)
     ? readFileSync(envPath, "utf8")
@@ -252,7 +256,7 @@ async function configureModelInteractive(
       return config;
     }
 
-    const envPath = resolve(process.cwd(), ".env");
+    const envPath = userConfigPath(config.homeDir);
     saveModelSetup(envPath, setup);
     config = loadConfig();
 
@@ -262,7 +266,7 @@ async function configureModelInteractive(
     keyValue("Model", config.modelName ?? "not configured");
     console.log(
       style.dim(
-        `Saved to ${envPath}. The file is gitignored and permissions are restricted where supported.`,
+        `Saved to ${envPath}, outside your project folders. Permissions are restricted to your user where supported.`,
       ),
     );
     console.log("");
@@ -448,7 +452,7 @@ async function chooseApiKey(
   section(`${modelProviderLabel(provider)} API key`);
   console.log(
     style.dim(
-      "Input is masked. meldr saves the key only in the local .env file.",
+      "Input is masked. meldr saves the key only in your private meldr config file.",
     ),
   );
   console.log("");
